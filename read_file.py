@@ -4,7 +4,8 @@ import json
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
-
+import datetime
+from pprint import pprint
 
 
 
@@ -78,8 +79,7 @@ def _merge_data(new_file, old_file):
     combined_file = new_file.append(old_file)
     unique_df = combined_file.drop_duplicates(subset=None, keep=False)
     
-    print("Total Rows in History File = ", unique_df.shape[0])
-
+    
     return unique_df
 
 
@@ -106,9 +106,33 @@ def _graph_progress(df):
     sorted_file.plot(kind='line',x='Workout Date',y='Total Calories', ax=ax)
     sorted_file.plot(kind='line',x='Workout Date',y='Heart Rate', ax=ax)
 
+    plt.title('Historical Performance')
+
     plt.show()
     
 
+
+def _show_last_30_days(df):
+    '''ax allows the same axis to be used multiple times for different lines'''
+
+    ax = plt.gca()
+
+    df['Workout Date'] = pd.to_datetime(df['Workout Date'])
+    start_date = datetime.datetime.now() + datetime.timedelta(-30)
+    
+
+    last_30_days = df[df['Workout Date'] >= start_date]
+
+    sorted_file = last_30_days.sort_values(by='Workout Date', ascending=False)
+
+    plt.title('Last 30 Days')
+
+    sorted_file.plot(kind='line',x='Workout Date',y='Distance', ax=ax)
+    sorted_file.plot(kind='line',x='Workout Date',y='Avg Speed', ax=ax)
+    sorted_file.plot(kind='line',x='Workout Date',y='Total Calories', ax=ax)
+    sorted_file.plot(kind='line',x='Workout Date',y='Heart Rate', ax=ax)
+
+    plt.show() 
 ##############################################################
 #                   MAIN
 ##############################################################
@@ -119,4 +143,5 @@ if __name__ == "__main__":
     historical_data = _load_history_file(history_file)
     combined_data = _merge_data(workout_table, historical_data)
     _graph_progress(combined_data)
+    _show_last_30_days(combined_data)
     _write_new_history(combined_data, history_file)
