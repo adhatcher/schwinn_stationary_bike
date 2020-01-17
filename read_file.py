@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 def _read_DAT_file():
     '''Setup the file so it can be processed.  By Default, the formatting is all jacked up'''
     os.system("echo '[' > myfile.json")
-    os.system("tail -n +9 AARON1.DAT >> tmp")
-    os.system("head -n $((`wc -l <tmp|sed 's/ //g'`-1)) tmp|sed 's/^}/,/' >> myfie.json")
+    os.system("tail -n +9 /volumes/HATCHER1/AARON1.DAT >> tmp")
+    os.system("head -n $((`wc -l <tmp|sed 's/ //g'`-1)) tmp|sed 's/^}/,/' >> myfile.json")
     os.system("echo ']' >> myfile.json")
     os.system("rm tmp")
 
@@ -20,7 +20,7 @@ def _read_DAT_file():
         workout_json = json.load(f)
     
     #Clean up temp file   
-    os.system("rm myfile.json") 
+    #os.system("rm myfile.json") 
     return workout_json
 
 
