@@ -9,10 +9,22 @@ from pprint import pprint
 
 
 
+def is_accessible(path, mode='r'):
+    """
+    Check if the file or directory at `path` can
+    be accessed by the program using `mode` open flags.
+    """
+    try:
+        f = open(path, mode)
+        f.close()
+    except IOError:
+        return False
+    return True
+
 def _read_DAT_file():
     '''Setup the file so it can be processed.  By Default, the formatting is all jacked up'''
     os.system("echo '[' > myfile.json")
-    os.system("tail -n +9 /volumes/HATCHER1/AARON1.DAT >> tmp")
+    os.system("tail -n +9 /Volumes/HATCHER1/AARON1.DAT >> tmp")
     os.system("head -n $((`wc -l <tmp|sed 's/ //g'`-1)) tmp|sed 's/^}/,/' >> myfile.json")
     os.system("echo ']' >> myfile.json")
     os.system("rm tmp")
@@ -138,10 +150,24 @@ def _show_last_30_days(df):
 ##############################################################
 if __name__ == "__main__":
     history_file = "Workout_History.csv"
+    DATA_FILE = "/Volumes/HATCHER1/AARON1.DAT"
     
-    workout_table = _load_workout_data(_read_DAT_file())
+    #Load Historical Data
     historical_data = _load_history_file(history_file)
-    combined_data = _merge_data(workout_table, historical_data)
+    
+    #Check to see if the data file is there. If it's not, just display the historical data.
+    check_file = is_accessible(DATA_FILE)
+    
+    #If the new file is there, Open it and merge it with the Historical File.
+    if check_file == True:
+        workout_table = _load_workout_data(_read_DAT_file())
+    
+        combined_data = _merge_data(workout_table, historical_data)
+    else:
+        combined_data = historical_data
+        
     _graph_progress(combined_data)
     _show_last_30_days(combined_data)
     _write_new_history(combined_data, history_file)
+    pd.set_option('display.max_rows', combined_data.shape[0]+1)
+    pprint(combined_data)
