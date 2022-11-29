@@ -5,3 +5,5 @@ venv/*
 Workout_History.csv
 Workout_History.csv.old
 Workout_History.csv.older
+myfile.json
+run_read_file.sh
