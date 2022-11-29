@@ -103,7 +103,7 @@ def _load_history_file(v_history_file, v_cnames):
 
     except:
         # Create an empty dataframe if there is no history file.
-        history_df = pd.DataFrame(columns=v_cnames, ignore_index=True)
+        history_df = pd.DataFrame(columns=v_cnames)
 
     return history_df.sort_values(by=['Workout_Date']).reset_index(drop=True)
 
