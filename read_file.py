@@ -25,7 +25,7 @@ def is_accessible(path, mode='r'):
 
 def _read_dat_file():
     """
-    Setup the file so it can be processed.  By Default, the formatting is all jacked up
+    Set up the file so it can be processed.  By Default, the formatting is all jacked up
     :return:
     """
     os.system("echo '[' > myfile.json")
@@ -85,7 +85,7 @@ def _load_workout_data(workout_json, v_cnames):
 
 def _load_history_file(v_history_file, v_cnames):
     """
-    Load the file with historical data so we don't lose what the bike purges
+    Load the file with historical data, so we don't lose what the bike purges
     :param v_history_file:
     :param v_cnames:
     :return:
@@ -116,15 +116,10 @@ def _merge_data(new_file, old_file):
     :param old_file:
     :return:
     """
-
-
     # combined_file = new_file.append(old_file)
     combined_file = pd.concat([old_file, new_file], ignore_index=True)
     sorted_file = combined_file.sort_values(by=['Workout_Date']).reset_index(drop=True)
-
     unique_df = sorted_file.drop_duplicates(subset=['Workout_Date', 'Workout_Time']).reset_index(drop=True)
-    print("Printing unique file")
-    print(unique_df)
 
     return unique_df
 
