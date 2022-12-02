@@ -36,9 +36,9 @@ def _read_dat_file():
 
     with open('myfile.json', 'r') as f:
         workout_json = json.load(f)
-    
+
     # Clean up temp file
-    # os.system("rm myfile.json")
+    os.system("rm myfile.json")
     return workout_json
 
 
@@ -117,12 +117,15 @@ def _merge_data(new_file, old_file):
     :return:
     """
 
+
     # combined_file = new_file.append(old_file)
     combined_file = pd.concat([old_file, new_file], ignore_index=True)
     sorted_file = combined_file.sort_values(by=['Workout_Date']).reset_index(drop=True)
-    
-    unique_df = sorted_file.drop_duplicates(subset=['Workout_Date', 'Workout_Time'], keep=False).reset_index(drop=True)
-    
+
+    unique_df = sorted_file.drop_duplicates(subset=['Workout_Date', 'Workout_Time']).reset_index(drop=True)
+    print("Printing unique file")
+    print(unique_df)
+
     return unique_df
 
 
