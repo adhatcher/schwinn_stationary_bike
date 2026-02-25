@@ -2,7 +2,7 @@ certifi==2024.7.4
 contourpy==1.0.6
 cycler==0.11.0
 distlib==0.3.6
-filelock==3.8.0
+filelock==3.20.3
 fonttools==4.60.2
 kiwisolver==1.4.4
 matplotlib==3.6.2
