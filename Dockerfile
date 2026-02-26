@@ -20,6 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8080 \
     DATA_DIR=/app/data \
+    LOG_DIR=/app/logs \
     DAT_FILE=/app/data/AARON.DAT \
     HISTORY_FILE=/app/data/Workout_History.csv
 
