@@ -11,6 +11,7 @@ permissions:
   packages: write
 
 env:
+  GHCR_REPO: ghcr.io/adhatcher/schwinn-dashboard
   GHCR_IMAGE: ghcr.io/adhatcher/schwinn-dashboard:latest
 
 jobs:
@@ -139,8 +140,39 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_PAT }}
 
+      - name: Determine next version tag
+        id: version
+        env:
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE_NAME: schwinn-dashboard
+          GH_TOKEN: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -euo pipefail
+
+          response=$(curl -sS \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}/versions?per_page=100")
+
+          latest_num=$(echo "${response}" | jq -r '
+            [ .[]?.metadata?.container?.tags[]? | select(test("^v[0-9]+$")) | ltrimstr("v") | tonumber ] |
+            if length == 0 then 0 else max end
+          ')
+
+          next_num=$((latest_num + 1))
+          next_tag="v${next_num}"
+
+          echo "next_tag=${next_tag}" >> "$GITHUB_OUTPUT"
+          echo "Using version tag: ${next_tag}"
+
       - name: Build Docker image via Makefile
         run: make build IMAGE=${GHCR_IMAGE}
 
+      - name: Tag versioned image
+        run: docker tag ${GHCR_IMAGE} ${GHCR_REPO}:${{ steps.version.outputs.next_tag }}
+
       - name: Push latest image to GHCR
         run: docker push ${GHCR_IMAGE}
+
+      - name: Push versioned image to GHCR
+        run: docker push ${GHCR_REPO}:${{ steps.version.outputs.next_tag }}
