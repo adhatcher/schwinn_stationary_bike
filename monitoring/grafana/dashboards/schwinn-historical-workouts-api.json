@@ -165,7 +165,7 @@
           "refId": "A",
           "source": "url",
           "type": "json",
-          "url": "${api_base_url}/api/grafana/workouts?fields=${field:csv}&from=${__from:date:YYYY-MM-DD}&to=${__to:date:YYYY-MM-DD}"
+          "url": "${api_base_url}/api/grafana/workouts?${field:queryparam}&from=${__from:date:YYYY-MM-DD}&to=${__to:date:YYYY-MM-DD}"
         }
       ],
       "title": "Selected Workout Fields Over Time",
@@ -248,7 +248,7 @@
           "refId": "A",
           "source": "url",
           "type": "json",
-          "url": "${api_base_url}/api/grafana/workouts?fields=${field:csv}&from=${__from:date:YYYY-MM-DD}&to=${__to:date:YYYY-MM-DD}"
+          "url": "${api_base_url}/api/grafana/workouts?${field:queryparam}&from=${__from:date:YYYY-MM-DD}&to=${__to:date:YYYY-MM-DD}"
         }
       ],
       "title": "Workout Points (Filtered)",
@@ -345,7 +345,7 @@
           "refId": "A",
           "source": "url",
           "type": "json",
-          "url": "${api_base_url}/api/grafana/summary?fields=${field:csv}&from=${__from:date:YYYY-MM-DD}&to=${__to:date:YYYY-MM-DD}"
+          "url": "${api_base_url}/api/grafana/summary?${field:queryparam}&from=${__from:date:YYYY-MM-DD}&to=${__to:date:YYYY-MM-DD}"
         }
       ],
       "title": "Summary (Filtered Window)",

@@ -203,6 +203,36 @@ def test_grafana_workouts_api_returns_timeseries_points(monkeypatch, tmp_path) -
     assert payload[0]["value"] == 3.2
 
 
+def test_grafana_workouts_api_defaults_to_all_fields(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30, distance=3.2)])
+    df.to_csv(history_file, index=False)
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+
+    client = app.app.test_client()
+    response = client.get("/api/grafana/workouts")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    returned_fields = {row["field"] for row in payload}
+    assert returned_fields == set(app.GRAPHABLE_FIELDS)
+
+
+def test_grafana_workouts_api_accepts_quoted_csv_fields(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30, distance=3.2)])
+    df.to_csv(history_file, index=False)
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+
+    client = app.app.test_client()
+    response = client.get("/api/grafana/workouts?fields='Distance','Avg_Speed'")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    returned_fields = {row["field"] for row in payload}
+    assert returned_fields == {"Distance", "Avg_Speed"}
+
+
 def test_grafana_workouts_api_rejects_invalid_field(monkeypatch, tmp_path) -> None:
     history_file = tmp_path / "Workout_History.csv"
     app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30)]).to_csv(history_file, index=False)

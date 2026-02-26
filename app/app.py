@@ -236,19 +236,25 @@ def parse_field_selection(args) -> list[str]:
         if field:
             requested_fields.append(field.strip())
 
+    for field in args.getlist("field[]"):
+        if field:
+            requested_fields.append(field.strip())
+
     comma_fields = args.get("fields", "")
     if comma_fields:
         for field in comma_fields.split(","):
-            if field.strip():
-                requested_fields.append(field.strip())
+            cleaned = field.strip()
+            if cleaned:
+                requested_fields.append(cleaned)
 
     if not requested_fields:
-        return ["Distance"]
+        return list(GRAPHABLE_FIELDS)
 
     deduped_fields: list[str] = []
     for field in requested_fields:
-        if field not in deduped_fields:
-            deduped_fields.append(field)
+        cleaned = field.strip().strip("'\"")
+        if cleaned and cleaned not in deduped_fields:
+            deduped_fields.append(cleaned)
 
     invalid_fields = [field for field in deduped_fields if field not in GRAPHABLE_FIELDS]
     if invalid_fields:
