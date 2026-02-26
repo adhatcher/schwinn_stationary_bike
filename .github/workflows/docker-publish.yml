@@ -76,7 +76,7 @@ jobs:
             passed = line_rate >= threshold
 
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-            fh.write(f"passed={'true' if passed else 'false'}\\n")
+            fh.write(f"passed={'true' if passed else 'false'}\n")
           PY
 
       - name: Evaluate quality gate
