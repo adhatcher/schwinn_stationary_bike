@@ -7,3 +7,13 @@ Workout_History.csv.old
 Workout_History.csv.older
 myfile.json
 run_read_file.sh
+
+flask_app/__pycache__
+flask_app/*.pyc
+flask_app/*.pyo
+flask_app/*.pyd
+flask_app/*.swp
+flask_app/.venv
+flask_app/venv
+flask_app/.pytest_cache
+flask_app/data/*.csv
