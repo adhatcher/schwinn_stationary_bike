@@ -36,6 +36,8 @@ Then open `http://localhost:8080`.
 
 - Health check: `GET /healthz`
 - Metrics: `GET /metrics`
+- Grafana workouts API: `GET /api/grafana/workouts?field=Distance&from=2026-01-01&to=2026-01-31`
+- Grafana summary API: `GET /api/grafana/summary?field=Distance&from=2026-01-01&to=2026-01-31`
 - Container healthcheck uses `/healthz`
 
 ## Logging

@@ -181,6 +181,66 @@ def test_download_history_returns_csv(monkeypatch, tmp_path) -> None:
     assert "Workout_Date" in response.get_data(as_text=True)
 
 
+def test_grafana_workouts_api_returns_timeseries_points(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data(
+        [
+            _sample_workout(1, 2, 2026, 0, 30, distance=3.2),
+            _sample_workout(1, 3, 2026, 0, 45, distance=4.4),
+        ]
+    )
+    df.to_csv(history_file, index=False)
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+
+    client = app.app.test_client()
+    response = client.get("/api/grafana/workouts?field=Distance")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert len(payload) == 2
+    assert payload[0]["field"] == "Distance"
+    assert payload[0]["time"] == "2026-01-02T00:00:00Z"
+    assert payload[0]["value"] == 3.2
+
+
+def test_grafana_workouts_api_rejects_invalid_field(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30)]).to_csv(history_file, index=False)
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+
+    client = app.app.test_client()
+    response = client.get("/api/grafana/workouts?field=NotAField")
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "Unsupported field" in payload["error"]
+    assert "allowed_fields" in payload
+
+
+def test_grafana_summary_api_returns_aggregates(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data(
+        [
+            _sample_workout(1, 1, 2026, 0, 30, distance=2.0),
+            _sample_workout(1, 2, 2026, 0, 45, distance=4.0),
+            _sample_workout(1, 3, 2026, 1, 0, distance=6.0),
+        ]
+    )
+    df.to_csv(history_file, index=False)
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+
+    client = app.app.test_client()
+    response = client.get("/api/grafana/summary?field=Distance&from=2026-01-02&to=2026-01-03")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["workout_count"] == 2
+    assert payload["fields"] == ["Distance"]
+    assert payload["minimums"]["Distance"] == 4.0
+    assert payload["maximums"]["Distance"] == 6.0
+    assert payload["averages"]["Distance"] == 5.0
+
+
 def test_upload_history_csv_merges_into_history(monkeypatch, tmp_path) -> None:
     history_file = tmp_path / "Workout_History.csv"
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)

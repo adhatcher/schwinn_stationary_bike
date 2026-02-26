@@ -229,6 +229,34 @@ def filter_data(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFram
     return filtered.sort_values(by=["Workout_Date"]).reset_index(drop=True)
 
 
+def parse_field_selection(args) -> list[str]:
+    requested_fields: list[str] = []
+
+    for field in args.getlist("field"):
+        if field:
+            requested_fields.append(field.strip())
+
+    comma_fields = args.get("fields", "")
+    if comma_fields:
+        for field in comma_fields.split(","):
+            if field.strip():
+                requested_fields.append(field.strip())
+
+    if not requested_fields:
+        return ["Distance"]
+
+    deduped_fields: list[str] = []
+    for field in requested_fields:
+        if field not in deduped_fields:
+            deduped_fields.append(field)
+
+    invalid_fields = [field for field in deduped_fields if field not in GRAPHABLE_FIELDS]
+    if invalid_fields:
+        raise ValueError(f"Unsupported field(s): {', '.join(invalid_fields)}")
+
+    return deduped_fields
+
+
 def build_chart(df: pd.DataFrame, fields: list[str]) -> str | None:
     if df.empty or not fields:
         return None
@@ -295,6 +323,68 @@ def download_history():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=Workout_History.csv"},
     )
+
+
+@app.route("/api/grafana/workouts", methods=["GET"])
+def grafana_workouts():
+    start_date = request.args.get("from", "") or request.args.get("start_date", "")
+    end_date = request.args.get("to", "") or request.args.get("end_date", "")
+
+    try:
+        selected_fields = parse_field_selection(request.args)
+    except ValueError as exc:
+        return jsonify(error=str(exc), allowed_fields=GRAPHABLE_FIELDS), 400
+
+    historical_data = load_history_file(HISTORY_FILE)
+    filtered_data = filter_data(historical_data, start_date, end_date)
+
+    points: list[dict] = []
+    for _, row in filtered_data.iterrows():
+        timestamp = row["Workout_Date"].strftime("%Y-%m-%dT%H:%M:%SZ")
+        for field in selected_fields:
+            value = row[field]
+            if pd.isna(value):
+                continue
+            points.append({"time": timestamp, "field": field, "value": float(value)})
+
+    return jsonify(points)
+
+
+@app.route("/api/grafana/summary", methods=["GET"])
+def grafana_summary():
+    start_date = request.args.get("from", "") or request.args.get("start_date", "")
+    end_date = request.args.get("to", "") or request.args.get("end_date", "")
+
+    try:
+        selected_fields = parse_field_selection(request.args)
+    except ValueError as exc:
+        return jsonify(error=str(exc), allowed_fields=GRAPHABLE_FIELDS), 400
+
+    historical_data = load_history_file(HISTORY_FILE)
+    filtered_data = filter_data(historical_data, start_date, end_date)
+
+    summary: dict[str, object] = {
+        "workout_count": int(len(filtered_data)),
+        "from": start_date,
+        "to": end_date,
+        "fields": selected_fields,
+        "averages": {},
+        "minimums": {},
+        "maximums": {},
+    }
+
+    for field in selected_fields:
+        field_series = pd.to_numeric(filtered_data[field], errors="coerce").dropna()
+        if field_series.empty:
+            summary["averages"][field] = None
+            summary["minimums"][field] = None
+            summary["maximums"][field] = None
+            continue
+        summary["averages"][field] = float(field_series.mean())
+        summary["minimums"][field] = float(field_series.min())
+        summary["maximums"][field] = float(field_series.max())
+
+    return jsonify(summary)
 
 
 @app.route("/", methods=["GET", "POST"])

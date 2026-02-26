@@ -134,3 +134,17 @@ Traceback (most recent call last):
   File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 125, in parse_dat_payload
     raise ValueError("No workout objects found in DAT file.")
 ValueError: No workout objects found in DAT file.
+2026-02-25 23:20:47 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-02-25 23:20:47 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-02-25 23:20:47 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-16/test_index_post_uses_disk_dat_0/AARON.DAT rows=1
+2026-02-25 23:20:47 WARNING [app.app] Import attempted without DAT file available
+2026-02-25 23:20:47 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 412, in index
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 202, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 125, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
