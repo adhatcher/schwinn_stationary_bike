@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schwinn Workout Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="page">
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="logo-wrap">
+        <img class="logo" src="{{ url_for('static', filename='schwinn-logo.png') }}" alt="Schwinn logo">
+      </div>
+      <div>
+        <h1>Workout Performance</h1>
+        <p class="subtitle">Interactive Schwinn training analysis with date-range and field-level chart controls.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <form method="post" enctype="multipart/form-data">
+        <div class="row">
+          <div>
+            <label for="dat_file">Import DAT File (AARON.DAT)</label>
+            <input type="file" id="dat_file" name="dat_file" accept=".dat,.DAT,.txt">
+          </div>
+          <div>
+            <label for="history_csv_file">Import Historical CSV (Initial Setup)</label>
+            <input type="file" id="history_csv_file" name="history_csv_file" accept=".csv,text/csv">
+          </div>
+          <div>
+            <label for="start_date">Start Date</label>
+            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" min="{{ min_date }}" max="{{ max_date }}">
+          </div>
+          <div>
+            <label for="end_date">End Date</label>
+            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" min="{{ min_date }}" max="{{ max_date }}">
+          </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <label>Fields To Graph</label>
+          <div class="fields">
+            {% for field in fields %}
+              <label class="check"><input type="checkbox" name="fields" value="{{ field }}" {% if field in selected_fields %}checked{% endif %}> {{ field }}</label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="btn" type="submit">Refresh Dashboard</button>
+          <a class="btn btn-secondary" href="{{ url_for('download_history') }}">Download Historical CSV</a>
+        </div>
+
+        <div class="path-grid">
+          <div class="meta-block">
+            <div class="meta-label">DAT Source Path</div>
+            <div class="meta-value">{{ dat_file }}</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">History File</div>
+            <div class="meta-value">{{ history_file }}</div>
+          </div>
+        </div>
+      </form>
+
+      {% if message %}
+        <div class="message">{{ message }}</div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <strong>Records in selected date range:</strong> {{ record_count }}
+      <br>
+      <strong>Total historical records:</strong> {{ historical_count }}
+    </section>
+
+    <section class="card">
+      {% if chart_html %}
+        {{ chart_html | safe }}
+      {% else %}
+        <p class="muted">No data available for the selected range/fields.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h3>All Historical Rows</h3>
+      {% if table_html %}
+        <div class="table-container">
+          {{ table_html | safe }}
+        </div>
+        <p class="muted">Use header filters to narrow rows. <code>Workout_Date</code> supports checkbox selection in a dropdown.</p>
+      {% else %}
+        <p class="muted">No historical data loaded yet.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+<script>
+  (function () {
+    const table = document.querySelector('.table-container table');
+    if (!table || !table.tHead || !table.tBodies.length) return;
+
+    const headerRow = table.tHead.rows[0];
+    const filterRow = table.tHead.insertRow(-1);
+    filterRow.className = 'filter-row';
+    const filterConfigs = [];
+
+    const getVisibleRows = () => Array.from(table.tBodies[0].rows);
+
+    const applyFilters = () => {
+      getVisibleRows().forEach((row) => {
+        const show = filterConfigs.every((cfg) => {
+          let selectedValues = [];
+          if (cfg.type === 'select') {
+            selectedValues = cfg.control.value ? [cfg.control.value] : [];
+          } else if (cfg.type === 'date-checkbox-dropdown') {
+            selectedValues = cfg.controls
+              .filter((checkbox) => checkbox.checked)
+              .map((checkbox) => checkbox.value);
+          }
+
+          if (!selectedValues.length) return true;
+          const cellText = (row.cells[cfg.index]?.textContent || '').trim();
+          return selectedValues.includes(cellText);
+        });
+        row.style.display = show ? '' : 'none';
+      });
+    };
+
+    const closeAllDateDropdowns = () => {
+      filterConfigs
+        .filter((cfg) => cfg.type === 'date-checkbox-dropdown')
+        .forEach((cfg) => cfg.menu.classList.remove('open'));
+    };
+
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('.dropdown-filter')) {
+        closeAllDateDropdowns();
+      }
+    });
+
+    Array.from(headerRow.cells).forEach((th, colIdx) => {
+      const filterCell = document.createElement('th');
+      const headerText = (th.textContent || '').trim();
+      const isDateColumn = headerText === 'Workout_Date';
+
+      const uniqueValues = new Set();
+      getVisibleRows().forEach((row) => {
+        const text = (row.cells[colIdx]?.textContent || '').trim();
+        if (text) uniqueValues.add(text);
+      });
+
+      const sortedValues = Array.from(uniqueValues).sort((a, b) => {
+        if (isDateColumn) {
+          const da = Date.parse(a);
+          const db = Date.parse(b);
+          if (!Number.isNaN(da) && !Number.isNaN(db)) return db - da;
+          return b.localeCompare(a, undefined, { numeric: true });
+        }
+        return a.localeCompare(b, undefined, { numeric: true });
+      });
+
+      if (isDateColumn) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dropdown-filter';
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'dropdown-filter-toggle';
+        toggle.textContent = 'All dates';
+
+        const menu = document.createElement('div');
+        menu.className = 'dropdown-filter-menu';
+
+        const checkboxControls = [];
+        sortedValues.forEach((value) => {
+          const label = document.createElement('label');
+          label.className = 'dropdown-option';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = value;
+          checkbox.addEventListener('change', () => {
+            const selectedCount = checkboxControls.filter((c) => c.checked).length;
+            toggle.textContent = selectedCount === 0 ? 'All dates' : `${selectedCount} selected`;
+            applyFilters();
+          });
+          checkboxControls.push(checkbox);
+
+          const textNode = document.createElement('span');
+          textNode.textContent = value;
+
+          label.appendChild(checkbox);
+          label.appendChild(textNode);
+          menu.appendChild(label);
+        });
+
+        toggle.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const isOpen = menu.classList.contains('open');
+          closeAllDateDropdowns();
+          if (!isOpen) menu.classList.add('open');
+        });
+
+        wrapper.appendChild(toggle);
+        wrapper.appendChild(menu);
+        filterCell.appendChild(wrapper);
+        filterConfigs.push({
+          type: 'date-checkbox-dropdown',
+          index: colIdx,
+          controls: checkboxControls,
+          menu: menu,
+        });
+      } else {
+        const select = document.createElement('select');
+        select.className = 'column-filter';
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = 'All';
+        select.appendChild(allOption);
+
+        sortedValues.forEach((value) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          select.appendChild(option);
+        });
+
+        select.addEventListener('change', applyFilters);
+        filterCell.appendChild(select);
+        filterConfigs.push({ type: 'select', index: colIdx, control: select });
+      }
+
+      filterRow.appendChild(filterCell);
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+services:
+  schwinn-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    platform: linux/amd64
+    environment:
+      - PORT=${PORT:-8080}
+      - DATA_DIR=${DATA_DIR:-/app/data}
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    volumes:
+      - ./data:${DATA_DIR:-/app/data}
