@@ -249,6 +249,7 @@ def build_chart(df: pd.DataFrame, fields: list[str]) -> str | None:
         title="Schwinn Workout Performance",
         xaxis_title="Workout Date",
         yaxis_title="Value",
+        height=792,
         hovermode="x unified",
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
