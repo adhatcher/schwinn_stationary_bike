@@ -1,5 +1,7 @@
 # Flask Schwinn Dashboard
 
+![schwinn-fitness](app/static/schwinn-logo.png)
+
 Flask replacement for `read_file.py` that:
 - reads `<user>.DAT`
 - parses workout JSON blocks using the same workout calculations
