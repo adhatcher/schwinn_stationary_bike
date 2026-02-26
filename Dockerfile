@@ -26,10 +26,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=builder /app/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
-COPY app.py ./
-COPY templates ./templates
-COPY data ./data
-COPY static ./static
+COPY app/app.py ./app.py
+COPY app/templates ./templates
+COPY app/data ./data
+COPY app/static ./static
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

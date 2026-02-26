@@ -8,4 +8,5 @@ venv
 .git
 .gitignore
 .pytest_cache
-data/*.csv
+app/data/*.csv
+app/logs/*.log

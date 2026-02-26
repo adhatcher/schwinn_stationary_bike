@@ -1,42 +1,81 @@
-# schwinn_stationary_bike
+# Flask Schwinn Dashboard
 
-Reads workout data produced by a Schwinn stationary bike and generates trend charts.
+Flask replacement for `read_file.py` that:
+- reads `<user>.DAT`
+- parses workout JSON blocks using the same workout calculations
+- merges imported workouts into `Workout_History.csv`
+- lets you pick date range and fields to graph dynamically
+- exposes health and Prometheus metrics endpoints
+- logs to rotating files (`100MB`, `5` backups)
 
-## Python version
+## Data columns
 
-This project now targets Python 3.14.
+The parsed workout columns are:
+- `Workout_Date`
+- `Distance`
+- `Avg_Speed`
+- `Workout_Time` (minutes)
+- `Total_Calories`
+- `Heart_Rate`
+- `RPM`
+- `Level`
 
-## Quick start
+## Poetry + Make (recommended)
 
 ```bash
-python3.14 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python read_file.py
+make install
+make test
+make run
 ```
 
-By default, the app looks for a bike export file at `/Volumes/AARON/AARON1.DAT`.
-You can override this with CLI flags:
+Then open `http://localhost:8080`.
+
+## Operational endpoints
+
+- Health check: `GET /healthz`
+- Metrics: `GET /metrics`
+- Container healthcheck uses `/healthz`
+
+## Logging
+
+- App logs: `app/logs/app.log` (or `/app/logs/app.log` in container)
+- Rotation: `100MB` max file size, `5` historical log files
+
+## Run as Docker container (AMD)
 
 ```bash
-python read_file.py --data-file /path/to/AARON1.DAT --history-file Workout_History.csv --days 30
+make build
+docker run --rm \
+  --platform linux/amd64 \
+  -e PORT=8080 \
+  -e DATA_DIR=/app/data \
+  -p 8080:8080 \
+  -v "$(pwd)/app/data:/app/data" \
+  schwinn-dashboard:latest
 ```
 
-## Historical Graphs
+Put your bike export file at `app/data/<user>.DAT`.
+`DATA_DIR` controls where uploaded files and `Workout_History.csv` are stored.
+`PORT` controls the listen port inside the container.
 
-![Historical Graphs](/images/HistoricalData.png)
+## Docker compose
 
-Once the file is read, you will get 2 sets of graphs (you will need to move graph 2 to see graph 1). The 1st set shows you your historical values for:
-- Workout Time
-- Distance
-- Average Speed
+```bash
+docker compose up --build
+```
 
-## Graphs for last 30 days
+You can override runtime values:
 
-![Past 30 Days](/images/Last30days.png)
+```bash
+PORT=9090 DATA_DIR=/app/custom-data docker compose up --build
+```
 
-Once you close those graphs, you will get 2 additional graphs (Graph 2 is on top of graph 1) with the same data for the last 30 days.
+## UI workflow
 
-## Display of all data
+1. Upload `<user>.DAT` (or place file at `/app/data/AARON.DAT`).
+2. Choose start/end date.
+3. Select fields to include.
+4. Use table header dropdown filters (date filter supports checkbox multi-select).
+5. Click **Refresh Dashboard**.
 
-Once you close those graphs, you will see a print out of all your past data points.
+Historical data is persisted in `/app/data/Workout_History.csv`.
