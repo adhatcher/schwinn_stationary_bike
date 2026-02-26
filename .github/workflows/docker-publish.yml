@@ -1,0 +1,159 @@
+name: Build and Publish Docker Image
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_IMAGE: ghcr.io/adhatcher/schwinn-dashboard:latest
+  DOCKERHUB_IMAGE: adhatcher/schwinn-dashboard:v5
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: make install POETRY=poetry
+
+      - name: Run tests
+        id: test
+        continue-on-error: true
+        run: make test POETRY=poetry
+
+      - name: Run coverage
+        id: coverage_run
+        continue-on-error: true
+        run: make coverage POETRY=poetry
+
+      - name: Check coverage threshold
+        id: coverage_check
+        if: ${{ always() }}
+        run: |
+          RATE=$(python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          if not os.path.exists('coverage.xml'):
+            print('0.0')
+            raise SystemExit(0)
+
+          root = ET.parse('coverage.xml').getroot()
+          line_rate = float(root.attrib.get('line-rate', '0'))
+          print(line_rate * 100)
+          PY
+          )
+
+          echo "rate=${RATE}" >> "$GITHUB_OUTPUT"
+
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          threshold = 0.75
+          passed = False
+
+          if os.path.exists('coverage.xml'):
+            root = ET.parse('coverage.xml').getroot()
+            line_rate = float(root.attrib.get('line-rate', '0'))
+            passed = line_rate >= threshold
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+            fh.write(f"passed={'true' if passed else 'false'}\\n")
+          PY
+
+      - name: Evaluate quality gate
+        id: gate
+        if: ${{ always() }}
+        run: |
+          failed=false
+          reasons=""
+
+          if [ "${{ steps.test.outcome }}" != "success" ]; then
+            failed=true
+            reasons="${reasons}Tests failed. "
+          fi
+
+          if [ "${{ steps.coverage_run.outcome }}" != "success" ]; then
+            failed=true
+            reasons="${reasons}Coverage run failed. "
+          fi
+
+          if [ "${{ steps.coverage_check.outputs.passed }}" != "true" ]; then
+            failed=true
+            reasons="${reasons}Coverage below 75% (actual: ${{ steps.coverage_check.outputs.rate }}%). "
+          fi
+
+          echo "failed=${failed}" >> "$GITHUB_OUTPUT"
+          echo "reasons=${reasons}" >> "$GITHUB_OUTPUT"
+
+      - name: Send failure email
+        if: ${{ steps.gate.outputs.failed == 'true' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Build failed: ${{ github.repository }}"
+          to: ${{ secrets.BUILD_FAILURE_EMAIL_TO }}
+          from: ${{ secrets.BUILD_FAILURE_EMAIL_FROM }}
+          body: |
+            Build failed for ${{ github.repository }}.
+            Workflow: ${{ github.workflow }}
+            Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Reason: ${{ steps.gate.outputs.reasons }}
+
+      - name: Fail quality gate
+        if: ${{ steps.gate.outputs.failed == 'true' }}
+        run: exit 1
+
+  build-and-push:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image via Makefile
+        run: make build IMAGE=${GHCR_IMAGE}
+
+      - name: Tag image with version
+        run: docker tag ${GHCR_IMAGE} ${DOCKERHUB_IMAGE}
+
+      - name: Push latest image to GHCR
+        run: docker push ${GHCR_IMAGE}
+
+      - name: Push versioned image to Docker Hub
+        run: docker push ${DOCKERHUB_IMAGE}
