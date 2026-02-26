@@ -12,7 +12,6 @@ permissions:
 
 env:
   GHCR_IMAGE: ghcr.io/adhatcher/schwinn-dashboard:latest
-  DOCKERHUB_IMAGE: adhatcher/schwinn-dashboard:v5
 
 jobs:
   quality-gate:
@@ -140,20 +139,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Build Docker image via Makefile
         run: make build IMAGE=${GHCR_IMAGE}
 
-      - name: Tag image with version
-        run: docker tag ${GHCR_IMAGE} ${DOCKERHUB_IMAGE}
-
       - name: Push latest image to GHCR
         run: docker push ${GHCR_IMAGE}
-
-      - name: Push versioned image to Docker Hub
-        run: docker push ${DOCKERHUB_IMAGE}
