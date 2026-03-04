@@ -1,178 +1,93 @@
-name: Build and Publish Docker Image
+name: Build and Deploy
 
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
-
 env:
-  GHCR_REPO: ghcr.io/adhatcher/schwinn-dashboard
-  GHCR_IMAGE: ghcr.io/adhatcher/schwinn-dashboard:latest
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  quality-gate:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: make install POETRY=poetry
-
-      - name: Run tests
-        id: test
-        continue-on-error: true
-        run: make test POETRY=poetry
-
-      - name: Run coverage
-        id: coverage_run
-        continue-on-error: true
-        run: make coverage POETRY=poetry
-
-      - name: Check coverage threshold
-        id: coverage_check
-        if: ${{ always() }}
-        run: |
-          RATE=$(python - <<'PY'
-          import os
-          import xml.etree.ElementTree as ET
-
-          if not os.path.exists('coverage.xml'):
-            print('0.0')
-            raise SystemExit(0)
-
-          root = ET.parse('coverage.xml').getroot()
-          line_rate = float(root.attrib.get('line-rate', '0'))
-          print(line_rate * 100)
-          PY
-          )
-
-          echo "rate=${RATE}" >> "$GITHUB_OUTPUT"
-
-          python - <<'PY'
-          import os
-          import xml.etree.ElementTree as ET
-
-          threshold = 0.75
-          passed = False
-
-          if os.path.exists('coverage.xml'):
-            root = ET.parse('coverage.xml').getroot()
-            line_rate = float(root.attrib.get('line-rate', '0'))
-            passed = line_rate >= threshold
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-            fh.write(f"passed={'true' if passed else 'false'}\n")
-          PY
-
-      - name: Evaluate quality gate
-        id: gate
-        if: ${{ always() }}
-        run: |
-          failed=false
-          reasons=""
-
-          if [ "${{ steps.test.outcome }}" != "success" ]; then
-            failed=true
-            reasons="${reasons}Tests failed. "
-          fi
-
-          if [ "${{ steps.coverage_run.outcome }}" != "success" ]; then
-            failed=true
-            reasons="${reasons}Coverage run failed. "
-          fi
-
-          if [ "${{ steps.coverage_check.outputs.passed }}" != "true" ]; then
-            failed=true
-            reasons="${reasons}Coverage below 75% (actual: ${{ steps.coverage_check.outputs.rate }}%). "
-          fi
-
-          echo "failed=${failed}" >> "$GITHUB_OUTPUT"
-          echo "reasons=${reasons}" >> "$GITHUB_OUTPUT"
-
-      - name: Send failure email
-        if: ${{ steps.gate.outputs.failed == 'true' }}
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "Build failed: ${{ github.repository }}"
-          to: ${{ secrets.BUILD_FAILURE_EMAIL_TO }}
-          from: ${{ secrets.BUILD_FAILURE_EMAIL_FROM }}
-          body: |
-            Build failed for ${{ github.repository }}.
-            Workflow: ${{ github.workflow }}
-            Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            Reason: ${{ steps.gate.outputs.reasons }}
-
-      - name: Fail quality gate
-        if: ${{ steps.gate.outputs.failed == 'true' }}
-        run: exit 1
-
   build-and-push:
-    needs: quality-gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
 
     steps:
-      - name: Check out repository
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to GHCR
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+
+      - name: Get latest build number and increment
+        id: tag
+        run: |
+          CURRENT_DATE=${{ steps.date.outputs.date }}
+          LATEST_TAG=$(git ls-remote --tags "https://github.com/${{ github.repository }}.git" | \
+            grep -oP "$CURRENT_DATE-\K\d+" | \
+            sort -n | \
+            tail -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            BUILD_NUMBER=1
+          else
+            BUILD_NUMBER=$((LATEST_TAG + 1))
+          fi
+
+          NEW_TAG="$CURRENT_DATE-$BUILD_NUMBER"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "New tag will be: $NEW_TAG"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GHCR_PAT }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine next version tag
-        id: version
-        env:
-          OWNER: ${{ github.repository_owner }}
-          PACKAGE_NAME: schwinn-dashboard
-          GH_TOKEN: ${{ secrets.GHCR_PAT }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.new_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.created=${{ steps.date.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update deployed image tag
         run: |
-          set -euo pipefail
-
-          response=$(curl -sS \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}/versions?per_page=100")
-
-          latest_num=$(echo "${response}" | jq -r '
-            [ .[]?.metadata?.container?.tags[]? | select(test("^v[0-9]+$")) | ltrimstr("v") | tonumber ] |
-            if length == 0 then 0 else max end
-          ')
-
-          next_num=$((latest_num + 1))
-          next_tag="v${next_num}"
-
-          echo "next_tag=${next_tag}" >> "$GITHUB_OUTPUT"
-          echo "Using version tag: ${next_tag}"
-
-      - name: Build Docker image via Makefile
-        run: make build IMAGE=${GHCR_IMAGE}
-
-      - name: Tag versioned image
-        run: docker tag ${GHCR_IMAGE} ${GHCR_REPO}:${{ steps.version.outputs.next_tag }}
-
-      - name: Push latest image to GHCR
-        run: docker push ${GHCR_IMAGE}
-
-      - name: Push versioned image to GHCR
-        run: docker push ${GHCR_REPO}:${{ steps.version.outputs.next_tag }}
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.new_tag }}"
+          awk -v image="$IMAGE_REF" '
+            !done && $0 ~ /^[[:space:]]*image:[[:space:]]*/ {
+              sub(/image:[[:space:]]*.*/, "image: " image)
+              done=1
+            }
+            { print }
+          ' deploy/kubevela/app.yaml > deploy/kubevela/app.yaml.tmp
+          mv deploy/kubevela/app.yaml.tmp deploy/kubevela/app.yaml
+          git add deploy/kubevela/app.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898752+github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && git diff --staged --quiet || (
+            git commit -m "chore: update image tag to ${{ steps.tag.outputs.new_tag }}"
+            git push
+          )
