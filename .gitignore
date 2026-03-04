@@ -21,3 +21,4 @@ run_read_file.sh
 */data/*.csv
 coverage.xml
 .coverage
+app/logs/*
