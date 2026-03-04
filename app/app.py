@@ -339,8 +339,8 @@ def grafana_workouts():
 
     try:
         selected_fields = parse_field_selection(request.args)
-    except ValueError as exc:
-        return jsonify(error=str(exc), allowed_fields=GRAPHABLE_FIELDS), 400
+    except ValueError:
+        return jsonify(error="Unsupported field selection.", allowed_fields=GRAPHABLE_FIELDS), 400
 
     historical_data = load_history_file(HISTORY_FILE)
     filtered_data = filter_data(historical_data, start_date, end_date)
@@ -364,8 +364,8 @@ def grafana_summary():
 
     try:
         selected_fields = parse_field_selection(request.args)
-    except ValueError as exc:
-        return jsonify(error=str(exc), allowed_fields=GRAPHABLE_FIELDS), 400
+    except ValueError:
+        return jsonify(error="Unsupported field selection.", allowed_fields=GRAPHABLE_FIELDS), 400
 
     historical_data = load_history_file(HISTORY_FILE)
     filtered_data = filter_data(historical_data, start_date, end_date)
