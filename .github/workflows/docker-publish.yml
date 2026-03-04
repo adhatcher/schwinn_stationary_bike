@@ -72,22 +72,3 @@ jobs:
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Update deployed image tag
-        run: |
-          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.new_tag }}"
-          awk -v image="$IMAGE_REF" '
-            !done && $0 ~ /^[[:space:]]*image:[[:space:]]*/ {
-              sub(/image:[[:space:]]*.*/, "image: " image)
-              done=1
-            }
-            { print }
-          ' deploy/kubevela/app.yaml > deploy/kubevela/app.yaml.tmp
-          mv deploy/kubevela/app.yaml.tmp deploy/kubevela/app.yaml
-          git add deploy/kubevela/app.yaml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898752+github-actions[bot]@users.noreply.github.com"
-          git diff --quiet && git diff --staged --quiet || (
-            git commit -m "chore: update image tag to ${{ steps.tag.outputs.new_tag }}"
-            git push
-          )
