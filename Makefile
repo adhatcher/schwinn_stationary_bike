@@ -4,7 +4,7 @@ PLATFORM ?= linux/amd64
 PORT ?= 8080
 DATA_DIR ?= /app/data
 
-.PHONY: install lock test coverage run build docker-build docker-run clean
+.PHONY: install lock test coverage security run build docker-build docker-run clean
 
 install:
 	$(POETRY) install
@@ -17,6 +17,10 @@ test:
 
 coverage:
 	$(POETRY) run pytest --cov=app.app --cov-report=term-missing --cov-report=xml
+
+security:
+	$(POETRY) run pip-audit
+	$(POETRY) run bandit -r app -x app/logs
 
 run:
 	$(POETRY) run python app/app.py
