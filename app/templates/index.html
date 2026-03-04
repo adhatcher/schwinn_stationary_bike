@@ -56,27 +56,11 @@
           <a class="btn btn-secondary" href="{{ url_for('download_history') }}">Download Historical CSV</a>
         </div>
 
-        <div class="path-grid">
-          <div class="meta-block">
-            <div class="meta-label">DAT Source Path</div>
-            <div class="meta-value">{{ dat_file }}</div>
-          </div>
-          <div class="meta-block">
-            <div class="meta-label">History File</div>
-            <div class="meta-value">{{ history_file }}</div>
-          </div>
-        </div>
       </form>
 
       {% if message %}
         <div class="message">{{ message }}</div>
       {% endif %}
-    </section>
-
-    <section class="card">
-      <strong>Records in selected date range:</strong> {{ record_count }}
-      <br>
-      <strong>Total historical records:</strong> {{ historical_count }}
     </section>
 
     <section class="card">
@@ -97,6 +81,22 @@
       {% else %}
         <p class="muted">No historical data loaded yet.</p>
       {% endif %}
+    </section>
+
+    <section class="card">
+      <strong>Records in selected date range:</strong> {{ record_count }}
+      <br>
+      <strong>Total historical records:</strong> {{ historical_count }}
+      <div class="path-grid">
+        <div class="meta-block">
+          <div class="meta-label">DAT Source Path</div>
+          <div class="meta-value">{{ dat_file }}</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">History File</div>
+          <div class="meta-value">{{ history_file }}</div>
+        </div>
+      </div>
     </section>
   </div>
 </div>
