@@ -1,0 +1,257 @@
+name: Security Remediation Agent
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      severity_threshold:
+        description: "Minimum alert severity to remediate"
+        required: false
+        default: "high"
+        type: choice
+        options:
+          - high
+          - critical
+      dry_run:
+        description: "Run without creating branches or PRs"
+        required: false
+        default: false
+        type: boolean
+      max_alerts:
+        description: "Maximum alerts to process per run"
+        required: false
+        default: "10"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: read
+
+concurrency:
+  group: security-remediation-agent-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    name: Discover Dependabot Alerts
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      has_alerts: ${{ steps.matrix.outputs.has_alerts }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select alerts API token
+        env:
+          DEPENDABOT_ALERTS_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
+          GITHUB_TOKEN_FALLBACK: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "$DEPENDABOT_ALERTS_TOKEN" ]; then
+            echo "ALERTS_TOKEN=$DEPENDABOT_ALERTS_TOKEN" >> "$GITHUB_ENV"
+            echo "Using DEPENDABOT_ALERTS_TOKEN for Dependabot alerts API." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ALERTS_TOKEN=$GITHUB_TOKEN_FALLBACK" >> "$GITHUB_ENV"
+            echo "DEPENDABOT_ALERTS_TOKEN is not set; using GITHUB_TOKEN fallback." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Precheck Dependabot alerts API access
+        run: |
+          RESPONSE_FILE="$(mktemp)"
+          HTTP_CODE="$(
+            curl -sS \
+              -o "$RESPONSE_FILE" \
+              -w "%{http_code}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $ALERTS_TOKEN" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${{ github.repository }}/dependabot/alerts?state=open&per_page=1"
+          )"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Dependabot alerts API access check passed." >> "$GITHUB_STEP_SUMMARY"
+            rm -f "$RESPONSE_FILE"
+            exit 0
+          fi
+
+          echo "Dependabot alerts API access check failed (HTTP $HTTP_CODE)." | tee -a "$GITHUB_STEP_SUMMARY"
+          cat "$RESPONSE_FILE" | tee -a "$GITHUB_STEP_SUMMARY"
+          rm -f "$RESPONSE_FILE"
+          echo "Use a token with Dependabot alerts read permission via DEPENDABOT_ALERTS_TOKEN." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Discover candidate alerts
+        env:
+          SEVERITY_THRESHOLD: ${{ inputs.severity_threshold || 'high' }}
+          MAX_ALERTS: ${{ inputs.max_alerts || '10' }}
+        run: |
+          python3 scripts/security_remediation_agent.py \
+            --repo "${{ github.repository }}" \
+            --token "$ALERTS_TOKEN" \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --output alerts.json \
+            list \
+            --max-alerts "$MAX_ALERTS"
+
+          echo "Discovered alerts payload:"
+          cat alerts.json
+
+      - name: Build matrix output
+        id: matrix
+        run: |
+          COUNT=$(jq -r '.count' alerts.json)
+          if [ "$COUNT" = "0" ]; then
+            echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+            echo "has_alerts=false" >> "$GITHUB_OUTPUT"
+            echo "No matching open Dependabot alerts found." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "matrix=$(jq -c '{include: .alerts}' alerts.json)" >> "$GITHUB_OUTPUT"
+          echo "has_alerts=true" >> "$GITHUB_OUTPUT"
+          echo "Will remediate $COUNT alert(s)." >> "$GITHUB_STEP_SUMMARY"
+
+  remediate:
+    name: Remediate Alert
+    runs-on: ubuntu-latest
+    needs: discover
+    if: needs.discover.outputs.has_alerts == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Select alerts API token
+        env:
+          DEPENDABOT_ALERTS_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
+          GITHUB_TOKEN_FALLBACK: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "$DEPENDABOT_ALERTS_TOKEN" ]; then
+            echo "ALERTS_TOKEN=$DEPENDABOT_ALERTS_TOKEN" >> "$GITHUB_ENV"
+            echo "Using DEPENDABOT_ALERTS_TOKEN for alert lookup." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ALERTS_TOKEN=$GITHUB_TOKEN_FALLBACK" >> "$GITHUB_ENV"
+            echo "DEPENDABOT_ALERTS_TOKEN is not set; using GITHUB_TOKEN fallback." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: python3 -m pip install "poetry==2.0.0"
+
+      - name: Remediate selected alert
+        id: remediate
+        env:
+          SEVERITY_THRESHOLD: ${{ inputs.severity_threshold || 'high' }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            DRY_FLAG="--dry-run"
+          else
+            DRY_FLAG=""
+          fi
+
+          python3 scripts/security_remediation_agent.py \
+            --repo "${{ github.repository }}" \
+            --token "$ALERTS_TOKEN" \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --output remediation.json \
+            remediate \
+            --alert-id "${{ matrix.alert_id }}" \
+            $DRY_FLAG
+
+          echo "Remediation payload:"
+          cat remediation.json
+
+      - name: Collect remediation outputs
+        id: result
+        run: |
+          echo "status=$(jq -r '.status' remediation.json)" >> "$GITHUB_OUTPUT"
+          echo "reason<<EOF" >> "$GITHUB_OUTPUT"
+          jq -r '.reason // ""' remediation.json >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "branch=$(jq -r '.branch // ""' remediation.json)" >> "$GITHUB_OUTPUT"
+          echo "title=$(jq -r '.title // ""' remediation.json)" >> "$GITHUB_OUTPUT"
+          echo "alert_id=$(jq -r '.alert.alert_id // ""' remediation.json)" >> "$GITHUB_OUTPUT"
+          echo "package=$(jq -r '.alert.package // ""' remediation.json)" >> "$GITHUB_OUTPUT"
+          echo "update_type=$(jq -r '.update_type // \"unknown\"' remediation.json)" >> "$GITHUB_OUTPUT"
+          echo "auto_merge_eligible=$(jq -r '.auto_merge_eligible // false' remediation.json)" >> "$GITHUB_OUTPUT"
+          jq -r '.pr_body // ""' remediation.json > pr_body.md
+          jq -r '.labels // [] | join(",")' remediation.json > labels.txt
+
+      - name: Configure git identity
+        if: steps.result.outputs.status == 'remediated' && (inputs.dry_run != true)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898752+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push remediation branch
+        id: commit
+        if: steps.result.outputs.status == 'remediated' && (inputs.dry_run != true)
+        run: |
+          BRANCH="${{ steps.result.outputs.branch }}"
+          git checkout -B "$BRANCH"
+          git add pyproject.toml poetry.lock
+
+          if git diff --staged --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No staged dependency changes for alert ${{ steps.result.outputs.alert_id }}." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git commit -m "${{ steps.result.outputs.title }}"
+          git push --force-with-lease --set-upstream origin "$BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update remediation PR
+        id: pr
+        if: steps.commit.outputs.changed == 'true' && (inputs.dry_run != true)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.result.outputs.branch }}"
+          TITLE="${{ steps.result.outputs.title }}"
+          LABELS="$(cat labels.txt)"
+
+          if gh pr view "$BRANCH" --json number --jq '.number' >/dev/null 2>&1; then
+            PR_NUMBER="$(gh pr view "$BRANCH" --json number --jq '.number')"
+            gh pr edit "$PR_NUMBER" --title "$TITLE" --body-file pr_body.md --add-label "$LABELS"
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "$TITLE" \
+              --body-file pr_body.md \
+              --label "$LABELS"
+            PR_NUMBER="$(gh pr view "$BRANCH" --json number --jq '.number')"
+          fi
+
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Created/updated PR #$PR_NUMBER for alert ${{ steps.result.outputs.alert_id }}." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enable auto-merge for patch/minor updates
+        if: steps.pr.outputs.number != '' && steps.result.outputs.auto_merge_eligible == 'true' && (inputs.dry_run != true)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge "${{ steps.pr.outputs.number }}" --auto --squash
+          echo "Auto-merge enabled for PR #${{ steps.pr.outputs.number }} (update: ${{ steps.result.outputs.update_type }})." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record skipped/failed result
+        if: steps.result.outputs.status != 'remediated' || (inputs.dry_run == true)
+        run: |
+          echo "Alert ${{ matrix.alert_id }} status: ${{ steps.result.outputs.status }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${{ steps.result.outputs.reason }}" ]; then
+            echo "${{ steps.result.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
