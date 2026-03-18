@@ -1,0 +1,13 @@
+<section class="hero">
+  <div class="hero-inner">
+    <div class="logo-wrap">
+      <img class="logo" src="{{ url_for('static', filename='schwinn-logo.png') }}" alt="Schwinn logo">
+    </div>
+    <div>
+      <h1>Workout Performance</h1>
+      {% if subtitle %}
+        <p class="subtitle">{{ subtitle }}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>

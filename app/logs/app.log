@@ -224,3 +224,282 @@ ValueError: No workout objects found in DAT file.
 2026-03-04 09:19:24 INFO [werkzeug] 127.0.0.1 - - [04/Mar/2026 09:19:24] "GET / HTTP/1.1" 200 -
 2026-03-04 09:19:24 INFO [werkzeug] 127.0.0.1 - - [04/Mar/2026 09:19:24] "GET /static/styles.css HTTP/1.1" 200 -
 2026-03-04 09:19:24 INFO [werkzeug] 127.0.0.1 - - [04/Mar/2026 09:19:24] "GET /static/schwinn-logo.png HTTP/1.1" 200 -
+2026-03-17 23:09:52 ERROR [app.app] Exception on / [GET]
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 480, in welcome
+    return render_template("welcome.html", **build_page_context(historical_data))
+                                             ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 298, in build_page_context
+    days_since_last_workout = int((pd.Timestamp.now().normalize() - max_ts.normalize()).days)
+                                   ~~~~~~~~~~~~~~~~^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/tests/test_app.py", line 193, in now
+    return pd.Timestamp("2026-03-17")
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^
+TypeError: FakeTimestamp() takes no arguments
+2026-03-17 23:09:52 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:09:52 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:09:52 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-6/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:09:52 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:09:52 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 529, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:10:12 ERROR [app.app] Exception on / [GET]
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.venv/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 480, in welcome
+    return render_template("welcome.html", **build_page_context(historical_data))
+                                             ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 308, in build_page_context
+    "summary_cards": build_summary_cards(historical_data),
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 269, in build_summary_cards
+    last_30 = summarize_window(df, days=30, today=today)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 237, in summarize_window
+    today = pd.Timestamp(today).normalize()
+            ~~~~~~~~~~~~^^^^^^^
+TypeError: FakeTimestamp() takes no arguments
+2026-03-17 23:10:12 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:10:12 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:10:12 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-7/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:10:12 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:10:12 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 529, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:10:32 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:10:32 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:10:32 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-8/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:10:32 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:10:32 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 533, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:10:45 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:10:45 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:10:45 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-9/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:10:45 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:10:45 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 533, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:13:35 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:13:35 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:13:35 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-10/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:13:35 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:13:35 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 533, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:13:46 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:13:46 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:13:46 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-11/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:13:46 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:13:46 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 533, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:13:56 INFO [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8080
+2026-03-17 23:13:56 INFO [werkzeug] [33mPress CTRL+C to quit[0m
+2026-03-17 23:14:04 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:04] "GET / HTTP/1.1" 200 -
+2026-03-17 23:14:04 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:04] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:14:04 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:04] "GET /static/styles.css HTTP/1.1" 200 -
+2026-03-17 23:14:04 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:04] "[33mGET /apple-touch-icon-precomposed.png HTTP/1.1[0m" 404 -
+2026-03-17 23:14:04 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:04] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-03-17 23:14:04 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:04] "[33mGET /apple-touch-icon.png HTTP/1.1[0m" 404 -
+2026-03-17 23:14:04 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:04] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-03-17 23:14:18 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:18] "GET /workout-performance HTTP/1.1" 200 -
+2026-03-17 23:14:18 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:18] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:14:18 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:18] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:14:35 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:35] "GET /workout-performance?start_date=2026-02-01&end_date=&fields=Distance&fields=Avg_Speed&fields=Workout_Time HTTP/1.1" 200 -
+2026-03-17 23:14:36 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:36] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:14:36 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:36] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:14:50 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:50] "GET / HTTP/1.1" 200 -
+2026-03-17 23:14:50 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:50] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:14:50 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:50] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:14:50 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:50] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:14:50 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:14:50] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:15:47 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:15:47 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:15:47 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-12/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:15:47 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:15:47 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 533, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:16:01 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:16:01 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:16:01 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-13/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:16:01 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:16:01 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 533, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:16:22 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:22] "GET / HTTP/1.1" 200 -
+2026-03-17 23:16:22 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:22] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:16:22 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:22] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:16:23 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:23] "GET / HTTP/1.1" 200 -
+2026-03-17 23:16:23 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:23] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:16:23 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:23] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:16:31 INFO [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8080
+2026-03-17 23:16:31 INFO [werkzeug] [33mPress CTRL+C to quit[0m
+2026-03-17 23:16:34 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:34] "GET / HTTP/1.1" 200 -
+2026-03-17 23:16:34 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:34] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:16:34 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:34] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:16:37 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:37] "GET / HTTP/1.1" 200 -
+2026-03-17 23:16:37 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:37] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:16:37 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:37] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:16:37 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:37] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:16:37 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:16:37] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:16:48 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:16:48 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:16:48 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-14/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:16:48 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:16:48 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 533, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:18:30 INFO [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8080
+2026-03-17 23:18:30 INFO [werkzeug] [33mPress CTRL+C to quit[0m
+2026-03-17 23:18:33 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:18:33] "GET /workout-performance HTTP/1.1" 200 -
+2026-03-17 23:18:33 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:18:33] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:18:33 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:18:33] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:18:49 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:18:49] "GET /workout-performance?start_date=2026-02-01&end_date=2026-02-25&fields=Distance&fields=Avg_Speed&fields=Workout_Time HTTP/1.1" 200 -
+2026-03-17 23:18:49 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:18:49] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:18:49 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:18:49] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:20:28 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:28] "GET / HTTP/1.1" 200 -
+2026-03-17 23:20:28 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:28] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:20:28 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:28] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:20:29 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:29] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:20:29 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:29] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:20:30 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:30] "GET /upload-workout HTTP/1.1" 200 -
+2026-03-17 23:20:30 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:30] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:20:30 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:30] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:20:54 INFO [app] DAT upload merged: file=AARON1.DAT rows=14
+2026-03-17 23:20:54 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:54] "[32mPOST /upload-workout HTTP/1.1[0m" 302 -
+2026-03-17 23:20:54 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:54] "GET /workout-performance?message=Uploaded+AARON1.DAT+and+merged+14+workouts. HTTP/1.1" 200 -
+2026-03-17 23:20:54 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:54] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:20:54 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:20:54] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:21:00 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:00] "GET / HTTP/1.1" 200 -
+2026-03-17 23:21:00 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:00] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:21:00 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:00] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:21:00 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:00] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:21:00 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:00] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:21:20 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:20] "GET /workout-performance HTTP/1.1" 200 -
+2026-03-17 23:21:20 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:20] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:21:20 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:21:20] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:09 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:09] "GET / HTTP/1.1" 200 -
+2026-03-17 23:24:09 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:09] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:09 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:09] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:09 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:09] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:09 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:09] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:13 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:13] "GET /workout-performance HTTP/1.1" 200 -
+2026-03-17 23:24:13 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:13] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:13 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:13] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:15 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:15] "GET / HTTP/1.1" 200 -
+2026-03-17 23:24:15 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:15] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:15 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:15] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:15 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:15] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:15 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:15] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:22 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-17 23:24:22 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-17 23:24:22 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-15/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-17 23:24:22 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-17 23:24:22 ERROR [app.app] DAT parse/import failed
+Traceback (most recent call last):
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 534, in upload_workout
+    new_data = read_dat_from_upload(dat_upload)
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 203, in read_dat_from_upload
+    return load_workout_data(parse_dat_payload(raw_text))
+                             ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/app/app.py", line 126, in parse_dat_payload
+    raise ValueError("No workout objects found in DAT file.")
+ValueError: No workout objects found in DAT file.
+2026-03-17 23:24:41 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:41] "GET /workout-performance HTTP/1.1" 200 -
+2026-03-17 23:24:41 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:41] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:41 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:41] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:49 INFO [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8080
+2026-03-17 23:24:49 INFO [werkzeug] [33mPress CTRL+C to quit[0m
+2026-03-17 23:24:51 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:51] "GET / HTTP/1.1" 200 -
+2026-03-17 23:24:51 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:51] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:51 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:51] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:51 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:51] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:51 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:51] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -
+2026-03-17 23:24:52 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:52] "GET /workout-performance HTTP/1.1" 200 -
+2026-03-17 23:24:52 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:52] "[36mGET /static/styles.css HTTP/1.1[0m" 304 -
+2026-03-17 23:24:52 INFO [werkzeug] 127.0.0.1 - - [17/Mar/2026 23:24:52] "[36mGET /static/schwinn-logo.png HTTP/1.1[0m" 304 -

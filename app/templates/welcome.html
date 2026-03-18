@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schwinn Welcome</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="page">
+  {% set subtitle = "Welcome dashboard for Schwinn training activity and quick actions." %}
+  {% include "_header.html" %}
+
+  <div class="grid">
+    <section class="card">
+      <h2 class="welcome-title">Welcome Back!</h2>
+      {% if days_since_last_workout is not none %}
+        <p class="welcome-copy">It's been {{ days_since_last_workout }} days since your last workout.</p>
+        <p class="muted">Last workout date: {{ last_workout_date }}</p>
+      {% else %}
+        <p class="welcome-copy">No workouts have been loaded yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="action-row action-row-wide">
+        <a class="btn" href="{{ url_for('upload_workout') }}">Enter New Workout</a>
+        <a class="btn btn-secondary" href="{{ url_for('workout_performance') }}">View Workout Performance Page</a>
+        <a class="btn btn-secondary" href="{{ url_for('upload_history') }}">Load Historical Data</a>
+      </div>
+    </section>
+
+    <section class="summary-section">
+      <h2>Last 30 Days</h2>
+      <div class="summary-grid">
+        <article class="summary-card">
+          <div class="summary-label">Total Workouts in the last 30 days</div>
+          <div class="summary-value">{{ summary_cards.last_30_days.workouts }}</div>
+        </article>
+        <article class="summary-card">
+          <div class="summary-label">Total Distance recorded in the last 30 days</div>
+          <div class="summary-value">{{ summary_cards.last_30_days.distance }}</div>
+        </article>
+        <article class="summary-card">
+          <div class="summary-label">Total Workout Time over the last 30 days</div>
+          <div class="summary-value">{{ summary_cards.last_30_days.time }}</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="summary-section">
+      <h2>Past Year</h2>
+      <div class="summary-grid">
+        <article class="summary-card">
+          <div class="summary-label">Total Workouts over the last year</div>
+          <div class="summary-value">{{ summary_cards.last_year.workouts }}</div>
+        </article>
+        <article class="summary-card">
+          <div class="summary-label">Total Distance over the last year</div>
+          <div class="summary-value">{{ summary_cards.last_year.distance }}</div>
+        </article>
+        <article class="summary-card">
+          <div class="summary-label">Total Workout Time over the last year</div>
+          <div class="summary-value">{{ summary_cards.last_year.time }}</div>
+        </article>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

@@ -181,6 +181,38 @@ def test_download_history_returns_csv(monkeypatch, tmp_path) -> None:
     assert "Workout_Date" in response.get_data(as_text=True)
 
 
+def test_welcome_page_shows_days_since_last_workout(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data([_sample_workout(3, 10, 2026, 0, 30)])
+    df.to_csv(history_file, index=False)
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
+
+    client = app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    text = response.get_data(as_text=True)
+    assert "Welcome Back!" in text
+    assert "It's been 7 days since your last workout." in text
+
+
+def test_summarize_window_includes_current_day_in_last_30_days() -> None:
+    df = app.load_workout_data(
+        [
+            _sample_workout(2, 15, 2026, 0, 20, distance=1.0),
+            _sample_workout(2, 17, 2026, 0, 25, distance=2.0),
+            _sample_workout(3, 17, 2026, 0, 30, distance=3.0),
+        ]
+    )
+
+    summary = app.summarize_window(df, days=30, today=pd.Timestamp("2026-03-17"))
+
+    assert summary["workout_count"] == 2
+    assert summary["distance"] == 5.0
+    assert summary["workout_time"] == 55
+
+
 def test_grafana_workouts_api_returns_timeseries_points(monkeypatch, tmp_path) -> None:
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data(
@@ -284,19 +316,20 @@ def test_upload_history_csv_merges_into_history(monkeypatch, tmp_path) -> None:
 
     client = app.app.test_client()
     response = client.post(
-        "/",
+        "/upload-history",
         data={"history_csv_file": (BytesIO(csv_text.encode("utf-8")), "history.csv")},
         content_type="multipart/form-data",
+        follow_redirects=False,
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 302
     assert history_file.exists()
     history_df = pd.read_csv(history_file)
     assert len(history_df) == 1
     assert float(history_df.loc[0, "Distance"]) == 3.5
 
 
-def test_index_post_dat_upload_merges_data(monkeypatch, tmp_path) -> None:
+def test_upload_workout_post_dat_upload_merges_data(monkeypatch, tmp_path) -> None:
     history_file = tmp_path / "Workout_History.csv"
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
     monkeypatch.setattr(app, "DATA_DIR", tmp_path)
@@ -304,17 +337,18 @@ def test_index_post_dat_upload_merges_data(monkeypatch, tmp_path) -> None:
 
     client = app.app.test_client()
     response = client.post(
-        "/",
+        "/upload-workout",
         data={"dat_file": (BytesIO(_sample_dat_text().encode("utf-8")), "AARON.DAT")},
         content_type="multipart/form-data",
+        follow_redirects=False,
     )
-    assert response.status_code == 200
+    assert response.status_code == 302
     assert history_file.exists()
     history_df = pd.read_csv(history_file)
     assert len(history_df) == 1
 
 
-def test_index_post_uses_disk_dat_when_present(monkeypatch, tmp_path) -> None:
+def test_upload_workout_post_uses_disk_dat_when_present(monkeypatch, tmp_path) -> None:
     history_file = tmp_path / "Workout_History.csv"
     dat_file = tmp_path / "AARON.DAT"
     dat_file.write_text(_sample_dat_text(), encoding="utf-8")
@@ -323,31 +357,30 @@ def test_index_post_uses_disk_dat_when_present(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(app, "DAT_FILE", dat_file)
 
     client = app.app.test_client()
-    response = client.post("/", data={})
-    assert response.status_code == 200
-    text = response.get_data(as_text=True)
-    assert "Loaded AARON.DAT from disk" in text
+    response = client.post("/upload-workout", data={}, follow_redirects=False)
+    assert response.status_code == 302
+    assert "/workout-performance" in response.headers["Location"]
 
 
-def test_index_post_shows_no_file_message_when_no_upload_and_no_disk_file(monkeypatch, tmp_path) -> None:
+def test_upload_workout_post_shows_no_file_message_when_no_upload_and_no_disk_file(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(app, "HISTORY_FILE", tmp_path / "Workout_History.csv")
     monkeypatch.setattr(app, "DATA_DIR", tmp_path)
     monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
 
     client = app.app.test_client()
-    response = client.post("/", data={})
+    response = client.post("/upload-workout", data={})
     assert response.status_code == 200
     assert "No upload provided and no DAT file found on disk." in response.get_data(as_text=True)
 
 
-def test_index_post_shows_parse_error_message_on_bad_dat_upload(monkeypatch, tmp_path) -> None:
+def test_upload_workout_post_shows_parse_error_message_on_bad_dat_upload(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(app, "HISTORY_FILE", tmp_path / "Workout_History.csv")
     monkeypatch.setattr(app, "DATA_DIR", tmp_path)
     monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
 
     client = app.app.test_client()
     response = client.post(
-        "/",
+        "/upload-workout",
         data={"dat_file": (BytesIO("not a valid dat payload".encode("utf-8")), "AARON.DAT")},
         content_type="multipart/form-data",
     )
@@ -371,10 +404,54 @@ def test_table_header_filter_ui_renders(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
 
     client = app.app.test_client()
-    response = client.get("/")
+    response = client.get("/workout-performance")
 
     assert response.status_code == 200
     text = response.get_data(as_text=True)
     assert "Workout_Date</code> supports checkbox selection in a dropdown" in text
     assert "dropdown-filter-toggle" in text
     assert "date-checkbox-dropdown" in text
+
+
+def test_workout_performance_defaults_start_date_to_one_year_ago(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data([_sample_workout(3, 1, 2026, 0, 30)])
+    df.to_csv(history_file, index=False)
+
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
+    monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
+
+    client = app.app.test_client()
+    response = client.get("/workout-performance")
+
+    assert response.status_code == 200
+    assert 'name="start_date" value="2025-03-17"' in response.get_data(as_text=True)
+
+
+def test_workout_performance_table_respects_selected_date_range(monkeypatch, tmp_path) -> None:
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data(
+        [
+            _sample_workout(1, 1, 2026, 0, 20, distance=1.0),
+            _sample_workout(1, 15, 2026, 0, 25, distance=2.0),
+            _sample_workout(2, 1, 2026, 0, 30, distance=3.0),
+        ]
+    )
+    df.to_csv(history_file, index=False)
+
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
+
+    client = app.app.test_client()
+    response = client.get("/workout-performance?start_date=2026-01-15&end_date=2026-01-15")
+
+    assert response.status_code == 200
+    text = response.get_data(as_text=True)
+    assert "2026-01-15" in text
+    assert ">2.0<" in text
+    assert ">1.0<" not in text
+    assert ">3.0<" not in text
+    assert "table-container-fixed" in text

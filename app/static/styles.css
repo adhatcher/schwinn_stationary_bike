@@ -151,6 +151,10 @@ input:focus {
   flex-wrap: wrap;
 }
 
+.action-row-wide .btn {
+  flex: 1 1 220px;
+}
+
 .path-grid {
   margin-top: 12px;
   display: grid;
@@ -202,6 +206,29 @@ table {
 
 .table-container {
   overflow-x: auto;
+}
+
+.table-container-fixed {
+  min-height: 288px;
+  max-height: 288px;
+  overflow: auto;
+}
+
+.table-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.table-actions {
+  justify-content: flex-start;
+}
+
+.table-empty-state {
+  min-height: 288px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
 }
 
 th, td {
@@ -277,7 +304,60 @@ th {
   letter-spacing: normal;
 }
 
+.welcome-title,
+.summary-section h2,
+.form-card h2 {
+  margin: 0 0 8px;
+  font: 700 28px/1.05 "Barlow Condensed", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.welcome-copy {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #202738;
+}
+
+.summary-section {
+  display: grid;
+  gap: 12px;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.summary-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 8px 20px rgba(19, 24, 38, 0.06);
+}
+
+.summary-label {
+  color: #4a5468;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.summary-value {
+  margin-top: 12px;
+  font: 700 36px/1 "Barlow Condensed", sans-serif;
+  color: var(--accent-dark);
+}
+
+.form-card {
+  max-width: 720px;
+}
+
 @media (max-width: 700px) {
   .logo { height: 52px; }
   h1 { font-size: 36px; }
+  .welcome-copy { font-size: 20px; }
 }

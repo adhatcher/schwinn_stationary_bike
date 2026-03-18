@@ -3,35 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Schwinn Workout Dashboard</title>
+  <title>Workout Performance Page</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
 <div class="page">
-  <section class="hero">
-    <div class="hero-inner">
-      <div class="logo-wrap">
-        <img class="logo" src="{{ url_for('static', filename='schwinn-logo.png') }}" alt="Schwinn logo">
-      </div>
-      <div>
-        <h1>Workout Performance</h1>
-        <p class="subtitle">Interactive Schwinn training analysis with date-range and field-level chart controls.</p>
-      </div>
-    </div>
-  </section>
+  {% set subtitle = "Interactive Schwinn training analysis with date-range and field-level chart controls." %}
+  {% include "_header.html" %}
 
   <div class="grid">
     <section class="card">
-      <form method="post" enctype="multipart/form-data">
+      <form method="get" action="{{ url_for('workout_performance') }}">
         <div class="row">
-          <div>
-            <label for="dat_file">Import DAT File (AARON.DAT)</label>
-            <input type="file" id="dat_file" name="dat_file" accept=".dat,.DAT,.txt">
-          </div>
-          <div>
-            <label for="history_csv_file">Import Historical CSV (Initial Setup)</label>
-            <input type="file" id="history_csv_file" name="history_csv_file" accept=".csv,text/csv">
-          </div>
           <div>
             <label for="start_date">Start Date</label>
             <input type="date" id="start_date" name="start_date" value="{{ start_date }}" min="{{ min_date }}" max="{{ max_date }}">
@@ -53,9 +36,8 @@
 
         <div class="action-row">
           <button class="btn" type="submit">Refresh Dashboard</button>
-          <a class="btn btn-secondary" href="{{ url_for('download_history') }}">Download Historical CSV</a>
+          <a class="btn btn-secondary" href="{{ url_for('welcome') }}">Back To Welcome Page</a>
         </div>
-
       </form>
 
       {% if message %}
@@ -72,14 +54,24 @@
     </section>
 
     <section class="card">
-      <h3>All Historical Rows</h3>
+      <h3>Filtered Workout Rows</h3>
       {% if table_html %}
-        <div class="table-container">
-          {{ table_html | safe }}
+        <div class="table-card">
+          <div class="table-container table-container-fixed">
+            {{ table_html | safe }}
+          </div>
+          <div class="action-row table-actions">
+            <a class="btn btn-secondary" href="{{ url_for('download_history') }}">Download Historical CSV</a>
+          </div>
         </div>
         <p class="muted">Use header filters to narrow rows. <code>Workout_Date</code> supports checkbox selection in a dropdown.</p>
       {% else %}
-        <p class="muted">No historical data loaded yet.</p>
+        <div class="table-empty-state">
+          <p class="muted">No historical data loaded for the selected date range.</p>
+        </div>
+        <div class="action-row table-actions">
+          <a class="btn btn-secondary" href="{{ url_for('download_history') }}">Download Historical CSV</a>
+        </div>
       {% endif %}
     </section>
 
@@ -219,10 +211,11 @@
       } else {
         const select = document.createElement('select');
         select.className = 'column-filter';
-        const allOption = document.createElement('option');
-        allOption.value = '';
-        allOption.textContent = 'All';
-        select.appendChild(allOption);
+
+        const emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = 'All';
+        select.appendChild(emptyOption);
 
         sortedValues.forEach((value) => {
           const option = document.createElement('option');

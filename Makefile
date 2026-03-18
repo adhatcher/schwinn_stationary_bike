@@ -40,4 +40,4 @@ docker-run:
 		$(IMAGE)
 
 clean:
-	rm -rf .pytest_cache
+	rm -rf .pytest_cache .venv

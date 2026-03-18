@@ -1,5 +1,5 @@
 AARON.DAT
-venv/*
+.venv/*
 .idea
 .ipynb_checkpoints
 Workout_History.csv

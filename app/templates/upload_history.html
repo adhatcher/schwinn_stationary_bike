@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Load Historical Data</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="page">
+  {% set subtitle = "Initial setup for importing an existing historical workout CSV." %}
+  {% include "_header.html" %}
+
+  <div class="grid">
+    <section class="card form-card">
+      <h2>Load Historical Data</h2>
+      <form method="post" enctype="multipart/form-data">
+        <div class="row">
+          <div>
+            <label for="history_csv_file">Select Historical CSV</label>
+            <input type="file" id="history_csv_file" name="history_csv_file" accept=".csv,text/csv">
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn" type="submit">Import Historical CSV</button>
+          <a class="btn btn-secondary" href="{{ url_for('welcome') }}">Back To Welcome Page</a>
+        </div>
+      </form>
+      {% if message %}
+        <div class="message">{{ message }}</div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+</body>
+</html>

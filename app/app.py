@@ -12,7 +12,7 @@ from typing import Iterable
 
 import pandas as pd
 import plotly.graph_objects as go
-from flask import Flask, Response, g, jsonify, render_template, request
+from flask import Flask, Response, g, jsonify, redirect, render_template, request, url_for
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 app = Flask(__name__)
@@ -230,6 +230,89 @@ def filter_data(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFram
     return filtered.sort_values(by=["Workout_Date"]).reset_index(drop=True)
 
 
+def current_day() -> pd.Timestamp:
+    return pd.Timestamp.now().normalize()
+
+
+def summarize_window(df: pd.DataFrame, *, days: int, today: pd.Timestamp | None = None) -> dict[str, float | int]:
+    if today is None:
+        today = current_day()
+    else:
+        today = pd.to_datetime(today).normalize()
+
+    if df.empty:
+        return {"workout_count": 0, "distance": 0.0, "workout_time": 0}
+
+    window_start = today - pd.Timedelta(days=max(days - 1, 0))
+    window_df = df[(df["Workout_Date"] >= window_start) & (df["Workout_Date"] <= today)]
+    return {
+        "workout_count": int(len(window_df)),
+        "distance": float(pd.to_numeric(window_df["Distance"], errors="coerce").fillna(0).sum()),
+        "workout_time": int(pd.to_numeric(window_df["Workout_Time"], errors="coerce").fillna(0).sum()),
+    }
+
+
+def format_distance(value: float) -> str:
+    formatted = f"{value:.1f}"
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".")
+    return formatted
+
+
+def format_minutes(total_minutes: int) -> str:
+    hours, minutes = divmod(int(total_minutes), 60)
+    if hours and minutes:
+        return f"{hours}h {minutes}m"
+    if hours:
+        return f"{hours}h"
+    return f"{minutes}m"
+
+
+def build_summary_cards(df: pd.DataFrame) -> dict[str, dict[str, str]]:
+    today = current_day()
+    last_30 = summarize_window(df, days=30, today=today)
+    last_year = summarize_window(df, days=365, today=today)
+
+    return {
+        "last_30_days": {
+            "workouts": str(last_30["workout_count"]),
+            "distance": format_distance(last_30["distance"]),
+            "time": format_minutes(last_30["workout_time"]),
+        },
+        "last_year": {
+            "workouts": str(last_year["workout_count"]),
+            "distance": format_distance(last_year["distance"]),
+            "time": format_minutes(last_year["workout_time"]),
+        },
+    }
+
+
+def build_page_context(historical_data: pd.DataFrame) -> dict[str, object]:
+    min_date = ""
+    max_date = ""
+    last_workout_date = ""
+    days_since_last_workout = None
+
+    if not historical_data.empty:
+        min_ts = historical_data["Workout_Date"].min()
+        max_ts = historical_data["Workout_Date"].max()
+        min_date = min_ts.date().isoformat()
+        max_date = max_ts.date().isoformat()
+        last_workout_date = max_ts.date().isoformat()
+        days_since_last_workout = int((current_day() - max_ts.normalize()).days)
+
+    return {
+        "history_file": HISTORY_FILE,
+        "dat_file": DAT_FILE,
+        "historical_count": len(historical_data),
+        "min_date": min_date,
+        "max_date": max_date,
+        "last_workout_date": last_workout_date,
+        "days_since_last_workout": days_since_last_workout,
+        "summary_cards": build_summary_cards(historical_data),
+    }
+
+
 def parse_field_selection(args) -> list[str]:
     requested_fields: list[str] = []
 
@@ -394,50 +477,20 @@ def grafana_summary():
     return jsonify(summary)
 
 
-@app.route("/", methods=["GET", "POST"])
-def index():
+@app.route("/", methods=["GET"])
+def welcome():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    message = ""
-
     historical_data = load_history_file(HISTORY_FILE)
+    return render_template("welcome.html", **build_page_context(historical_data))
 
-    if request.method == "POST":
-        try:
-            history_upload = request.files.get("history_csv_file")
-            dat_upload = request.files.get("dat_file")
 
-            if history_upload and history_upload.filename:
-                start = perf_counter()
-                uploaded_history = read_history_csv_from_upload(history_upload)
-                FILE_IMPORT_LATENCY.labels("history_csv").observe(perf_counter() - start)
-                historical_data = merge_data(uploaded_history, historical_data)
-                save_history(historical_data, HISTORY_FILE)
-                message = f"Uploaded {history_upload.filename} and merged {len(uploaded_history)} historical rows."
-                app.logger.info("History CSV merged: file=%s rows=%s", history_upload.filename, len(uploaded_history))
-            elif dat_upload and dat_upload.filename:
-                start = perf_counter()
-                new_data = read_dat_from_upload(dat_upload)
-                FILE_IMPORT_LATENCY.labels("upload").observe(perf_counter() - start)
-                historical_data = merge_data(new_data, historical_data)
-                save_history(historical_data, HISTORY_FILE)
-                message = f"Uploaded {dat_upload.filename} and merged {len(new_data)} workouts."
-                app.logger.info("DAT upload merged: file=%s rows=%s", dat_upload.filename, len(new_data))
-            elif DAT_FILE.exists():
-                start = perf_counter()
-                new_data = read_dat_from_disk(DAT_FILE)
-                FILE_IMPORT_LATENCY.labels("disk").observe(perf_counter() - start)
-                historical_data = merge_data(new_data, historical_data)
-                save_history(historical_data, HISTORY_FILE)
-                message = f"Loaded {DAT_FILE.name} from disk and merged {len(new_data)} workouts."
-                app.logger.info("Disk import merged: file=%s rows=%s", DAT_FILE, len(new_data))
-            else:
-                message = "No upload provided and no DAT file found on disk."
-                app.logger.warning("Import attempted without DAT file available")
-        except Exception as exc:
-            message = f"Unable to parse DAT file: {exc}"
-            app.logger.exception("DAT parse/import failed")
-
-    start_date = request.values.get("start_date", "")
+@app.route("/workout-performance", methods=["GET"])
+def workout_performance():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    message = request.args.get("message", "")
+    historical_data = load_history_file(HISTORY_FILE)
+    default_start_date = (current_day() - pd.DateOffset(years=1)).date().isoformat()
+    start_date = request.values.get("start_date", default_start_date)
     end_date = request.values.get("end_date", "")
 
     selected_fields = [field for field in request.values.getlist("fields") if field in GRAPHABLE_FIELDS]
@@ -446,14 +499,7 @@ def index():
 
     filtered_data = filter_data(historical_data, start_date, end_date)
     chart_html = build_chart(filtered_data, selected_fields)
-
-    min_date = ""
-    max_date = ""
-    if not historical_data.empty:
-        min_date = historical_data["Workout_Date"].min().date().isoformat()
-        max_date = historical_data["Workout_Date"].max().date().isoformat()
-
-    historical_table_data = historical_data.sort_values(by=["Workout_Date"], ascending=False).reset_index(drop=True)
+    historical_table_data = filtered_data.sort_values(by=["Workout_Date"], ascending=False).reset_index(drop=True)
     table_html = (
         historical_table_data.to_html(classes="table table-striped", index=False)
         if not historical_table_data.empty
@@ -461,21 +507,96 @@ def index():
     )
 
     return render_template(
-        "index.html",
+        "workout_performance.html",
         message=message,
         fields=GRAPHABLE_FIELDS,
         selected_fields=selected_fields,
         start_date=start_date,
         end_date=end_date,
-        min_date=min_date,
-        max_date=max_date,
         chart_html=chart_html,
         table_html=table_html,
         record_count=len(filtered_data),
-        historical_count=len(historical_data),
-        history_file=HISTORY_FILE,
-        dat_file=DAT_FILE,
+        **build_page_context(historical_data),
     )
+
+
+@app.route("/upload-workout", methods=["GET", "POST"])
+def upload_workout():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    message = ""
+
+    if request.method == "POST":
+        historical_data = load_history_file(HISTORY_FILE)
+        try:
+            dat_upload = request.files.get("dat_file")
+            if dat_upload and dat_upload.filename:
+                start = perf_counter()
+                new_data = read_dat_from_upload(dat_upload)
+                FILE_IMPORT_LATENCY.labels("upload").observe(perf_counter() - start)
+                historical_data = merge_data(new_data, historical_data)
+                save_history(historical_data, HISTORY_FILE)
+                app.logger.info("DAT upload merged: file=%s rows=%s", dat_upload.filename, len(new_data))
+                return redirect(
+                    url_for(
+                        "workout_performance",
+                        message=f"Uploaded {dat_upload.filename} and merged {len(new_data)} workouts.",
+                    )
+                )
+
+            if DAT_FILE.exists():
+                start = perf_counter()
+                new_data = read_dat_from_disk(DAT_FILE)
+                FILE_IMPORT_LATENCY.labels("disk").observe(perf_counter() - start)
+                historical_data = merge_data(new_data, historical_data)
+                save_history(historical_data, HISTORY_FILE)
+                app.logger.info("Disk import merged: file=%s rows=%s", DAT_FILE, len(new_data))
+                return redirect(
+                    url_for(
+                        "workout_performance",
+                        message=f"Loaded {DAT_FILE.name} from disk and merged {len(new_data)} workouts.",
+                    )
+                )
+
+            message = "No upload provided and no DAT file found on disk."
+            app.logger.warning("Workout import attempted without DAT file available")
+        except Exception as exc:
+            message = f"Unable to parse DAT file: {exc}"
+            app.logger.exception("DAT parse/import failed")
+
+    historical_data = load_history_file(HISTORY_FILE)
+    return render_template("upload_workout.html", message=message, **build_page_context(historical_data))
+
+
+@app.route("/upload-history", methods=["GET", "POST"])
+def upload_history():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    message = ""
+
+    if request.method == "POST":
+        historical_data = load_history_file(HISTORY_FILE)
+        try:
+            history_upload = request.files.get("history_csv_file")
+            if not history_upload or not history_upload.filename:
+                message = "Please choose a historical CSV file to import."
+            else:
+                start = perf_counter()
+                uploaded_history = read_history_csv_from_upload(history_upload)
+                FILE_IMPORT_LATENCY.labels("history_csv").observe(perf_counter() - start)
+                historical_data = merge_data(uploaded_history, historical_data)
+                save_history(historical_data, HISTORY_FILE)
+                app.logger.info("History CSV merged: file=%s rows=%s", history_upload.filename, len(uploaded_history))
+                return redirect(
+                    url_for(
+                        "workout_performance",
+                        message=f"Uploaded {history_upload.filename} and merged {len(uploaded_history)} historical rows.",
+                    )
+                )
+        except Exception as exc:
+            message = f"Unable to import historical CSV: {exc}"
+            app.logger.exception("History CSV import failed")
+
+    historical_data = load_history_file(HISTORY_FILE)
+    return render_template("upload_history.html", message=message, **build_page_context(historical_data))
 
 
 if __name__ == "__main__":
