@@ -38,6 +38,8 @@ COLUMN_NAMES = [
     "Level",
 ]
 GRAPHABLE_FIELDS = [name for name in COLUMN_NAMES if name != "Workout_Date"]
+DAT_IMPORT_ERROR_MESSAGE = "Unable to parse the uploaded DAT file. Check the file contents and try again."
+HISTORY_IMPORT_ERROR_MESSAGE = "Unable to import the historical CSV file. Verify the file format and try again."
 
 REQUEST_COUNT = Counter(
     "schwinn_http_requests_total",
@@ -559,8 +561,8 @@ def upload_workout():
 
             message = "No upload provided and no DAT file found on disk."
             app.logger.warning("Workout import attempted without DAT file available")
-        except Exception as exc:
-            message = f"Unable to parse DAT file: {exc}"
+        except Exception:
+            message = DAT_IMPORT_ERROR_MESSAGE
             app.logger.exception("DAT parse/import failed")
 
     historical_data = load_history_file(HISTORY_FILE)
@@ -591,8 +593,8 @@ def upload_history():
                         message=f"Uploaded {history_upload.filename} and merged {len(uploaded_history)} historical rows.",
                     )
                 )
-        except Exception as exc:
-            message = f"Unable to import historical CSV: {exc}"
+        except Exception:
+            message = HISTORY_IMPORT_ERROR_MESSAGE
             app.logger.exception("History CSV import failed")
 
     historical_data = load_history_file(HISTORY_FILE)

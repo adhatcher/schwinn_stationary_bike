@@ -150,6 +150,44 @@ def test_read_history_csv_from_upload_raises_on_missing_columns() -> None:
         raise AssertionError("Expected ValueError for missing history columns")
 
 
+def test_upload_workout_does_not_expose_exception_details(monkeypatch) -> None:
+    def fail_read_dat_from_upload(_upload):
+        raise ValueError("secret parse failure details")
+
+    monkeypatch.setattr(app, "read_dat_from_upload", fail_read_dat_from_upload)
+
+    client = app.app.test_client()
+    response = client.post(
+        "/upload-workout",
+        data={"dat_file": (BytesIO(b"bad dat payload"), "AARON.DAT")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    text = response.get_data(as_text=True)
+    assert app.DAT_IMPORT_ERROR_MESSAGE in text
+    assert "secret parse failure details" not in text
+
+
+def test_upload_history_does_not_expose_exception_details(monkeypatch) -> None:
+    def fail_read_history_csv_from_upload(_upload):
+        raise ValueError("secret csv failure details")
+
+    monkeypatch.setattr(app, "read_history_csv_from_upload", fail_read_history_csv_from_upload)
+
+    client = app.app.test_client()
+    response = client.post(
+        "/upload-history",
+        data={"history_csv_file": (BytesIO(b"bad,csv"), "history.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    text = response.get_data(as_text=True)
+    assert app.HISTORY_IMPORT_ERROR_MESSAGE in text
+    assert "secret csv failure details" not in text
+
+
 def test_healthz_endpoint_returns_ok() -> None:
     client = app.app.test_client()
     response = client.get("/healthz")
