@@ -1,5 +1,6 @@
 AARON.DAT
 .venv/*
+.env
 .idea
 .ipynb_checkpoints
 Workout_History.csv
@@ -19,6 +20,7 @@ run_read_file.sh
 */venv
 */.pytest_cache
 */data/*.csv
+*/data/*.db
 coverage.xml
 .coverage
 app/logs/*

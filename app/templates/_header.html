@@ -1,13 +1,28 @@
 <section class="hero">
   <div class="hero-inner">
-    <div class="logo-wrap">
-      <img class="logo" src="{{ url_for('static', filename='schwinn-logo.png') }}" alt="Schwinn logo">
+    <div class="hero-copy">
+      <div class="logo-wrap">
+        <img class="logo" src="{{ url_for('static', filename='schwinn-logo.png') }}" alt="Schwinn logo">
+      </div>
+      <div>
+        <h1>Workout Performance</h1>
+        {% if subtitle %}
+          <p class="subtitle">{{ subtitle }}</p>
+        {% endif %}
+      </div>
     </div>
-    <div>
-      <h1>Workout Performance</h1>
-      {% if subtitle %}
-        <p class="subtitle">{{ subtitle }}</p>
-      {% endif %}
-    </div>
+    {% if current_user %}
+      <div class="hero-account">
+        <div class="account-card">
+          <span class="account-label">Signed In</span>
+          <strong>{{ current_user["email"] }}</strong>
+        </div>
+        <div class="hero-links">
+          <a href="{{ url_for('welcome') }}">Home</a>
+          <a href="{{ url_for('workout_performance') }}">Dashboard</a>
+          <a href="{{ url_for('logout') }}">Log Out</a>
+        </div>
+      </div>
+    {% endif %}
   </div>
 </section>

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import importlib
+import os
 from io import BytesIO
 import textwrap
+from pathlib import Path
 
 import pandas as pd
+from flask import request
 from werkzeug.datastructures import FileStorage
 
 app = importlib.import_module("app.app")
@@ -31,6 +34,48 @@ def _sample_dat_text() -> str:
         """
     ).strip()
     return f"{header}\n{body}"
+
+
+def _configure_auth(monkeypatch, tmp_path) -> None:
+    auth_db = tmp_path / "users.db"
+    monkeypatch.setattr(app, "AUTH_DB_FILE", auth_db)
+    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
+    monkeypatch.setattr(app, "HISTORY_FILE", tmp_path / "Workout_History.csv")
+    app.app.secret_key = "test-secret-key"
+    app.init_auth_db()
+
+
+def _create_user(email: str = "athlete@example.com", password: str = "password123"):
+    return app.create_user(email, password)
+
+
+def _log_in(client, user=None) -> None:
+    auth_user = user or _create_user()
+    with client.session_transaction() as flask_session:
+        flask_session[app.USER_SESSION_KEY] = int(auth_user["id"])
+
+
+class _DummySMTP:
+    def __init__(self, *_args, **_kwargs):
+        self.started_tls = False
+        self.logged_in = None
+        self.sent_message = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def starttls(self):
+        self.started_tls = True
+
+    def login(self, username, password):
+        self.logged_in = (username, password)
+
+    def send_message(self, message):
+        self.sent_message = message
 
 
 def test_extract_json_objects_parses_multiple_objects() -> None:
@@ -150,13 +195,15 @@ def test_read_history_csv_from_upload_raises_on_missing_columns() -> None:
         raise AssertionError("Expected ValueError for missing history columns")
 
 
-def test_upload_workout_does_not_expose_exception_details(monkeypatch) -> None:
+def test_upload_workout_does_not_expose_exception_details(monkeypatch, tmp_path) -> None:
     def fail_read_dat_from_upload(_upload):
         raise ValueError("secret parse failure details")
 
     monkeypatch.setattr(app, "read_dat_from_upload", fail_read_dat_from_upload)
 
+    _configure_auth(monkeypatch, tmp_path)
     client = app.app.test_client()
+    _log_in(client)
     response = client.post(
         "/upload-workout",
         data={"dat_file": (BytesIO(b"bad dat payload"), "AARON.DAT")},
@@ -169,13 +216,15 @@ def test_upload_workout_does_not_expose_exception_details(monkeypatch) -> None:
     assert "secret parse failure details" not in text
 
 
-def test_upload_history_does_not_expose_exception_details(monkeypatch) -> None:
+def test_upload_history_does_not_expose_exception_details(monkeypatch, tmp_path) -> None:
     def fail_read_history_csv_from_upload(_upload):
         raise ValueError("secret csv failure details")
 
     monkeypatch.setattr(app, "read_history_csv_from_upload", fail_read_history_csv_from_upload)
 
+    _configure_auth(monkeypatch, tmp_path)
     client = app.app.test_client()
+    _log_in(client)
     response = client.post(
         "/upload-history",
         data={"history_csv_file": (BytesIO(b"bad,csv"), "history.csv")},
@@ -206,12 +255,14 @@ def test_metrics_endpoint_exposes_prometheus_output() -> None:
 
 
 def test_download_history_returns_csv(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     sample_df = app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30)])
     sample_df.to_csv(history_file, index=False)
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/download-history")
 
     assert response.status_code == 200
@@ -220,6 +271,7 @@ def test_download_history_returns_csv(monkeypatch, tmp_path) -> None:
 
 
 def test_welcome_page_shows_days_since_last_workout(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data([_sample_workout(3, 10, 2026, 0, 30)])
     df.to_csv(history_file, index=False)
@@ -227,6 +279,7 @@ def test_welcome_page_shows_days_since_last_workout(monkeypatch, tmp_path) -> No
     monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/")
 
     assert response.status_code == 200
@@ -252,6 +305,7 @@ def test_summarize_window_includes_current_day_in_last_30_days() -> None:
 
 
 def test_grafana_workouts_api_returns_timeseries_points(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data(
         [
@@ -263,6 +317,7 @@ def test_grafana_workouts_api_returns_timeseries_points(monkeypatch, tmp_path) -
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/api/grafana/workouts?field=Distance")
 
     assert response.status_code == 200
@@ -274,12 +329,14 @@ def test_grafana_workouts_api_returns_timeseries_points(monkeypatch, tmp_path) -
 
 
 def test_grafana_workouts_api_defaults_to_all_fields(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30, distance=3.2)])
     df.to_csv(history_file, index=False)
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/api/grafana/workouts")
 
     assert response.status_code == 200
@@ -289,12 +346,14 @@ def test_grafana_workouts_api_defaults_to_all_fields(monkeypatch, tmp_path) -> N
 
 
 def test_grafana_workouts_api_accepts_quoted_csv_fields(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30, distance=3.2)])
     df.to_csv(history_file, index=False)
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/api/grafana/workouts?fields='Distance','Avg_Speed'")
 
     assert response.status_code == 200
@@ -304,11 +363,13 @@ def test_grafana_workouts_api_accepts_quoted_csv_fields(monkeypatch, tmp_path) -
 
 
 def test_grafana_workouts_api_rejects_invalid_field(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     app.load_workout_data([_sample_workout(1, 2, 2026, 0, 30)]).to_csv(history_file, index=False)
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/api/grafana/workouts?field=NotAField")
 
     assert response.status_code == 400
@@ -318,6 +379,7 @@ def test_grafana_workouts_api_rejects_invalid_field(monkeypatch, tmp_path) -> No
 
 
 def test_grafana_summary_api_returns_aggregates(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data(
         [
@@ -330,6 +392,7 @@ def test_grafana_summary_api_returns_aggregates(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/api/grafana/summary?field=Distance&from=2026-01-02&to=2026-01-03")
 
     assert response.status_code == 200
@@ -342,10 +405,8 @@ def test_grafana_summary_api_returns_aggregates(monkeypatch, tmp_path) -> None:
 
 
 def test_upload_history_csv_merges_into_history(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
-    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
 
     csv_text = (
         "Workout_Date,Distance,Avg_Speed,Workout_Time,Total_Calories,Heart_Rate,RPM,Level\n"
@@ -353,6 +414,7 @@ def test_upload_history_csv_merges_into_history(monkeypatch, tmp_path) -> None:
     )
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.post(
         "/upload-history",
         data={"history_csv_file": (BytesIO(csv_text.encode("utf-8")), "history.csv")},
@@ -368,12 +430,11 @@ def test_upload_history_csv_merges_into_history(monkeypatch, tmp_path) -> None:
 
 
 def test_upload_workout_post_dat_upload_merges_data(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
-    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.post(
         "/upload-workout",
         data={"dat_file": (BytesIO(_sample_dat_text().encode("utf-8")), "AARON.DAT")},
@@ -387,46 +448,45 @@ def test_upload_workout_post_dat_upload_merges_data(monkeypatch, tmp_path) -> No
 
 
 def test_upload_workout_post_uses_disk_dat_when_present(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     dat_file = tmp_path / "AARON.DAT"
     dat_file.write_text(_sample_dat_text(), encoding="utf-8")
-    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
     monkeypatch.setattr(app, "DAT_FILE", dat_file)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.post("/upload-workout", data={}, follow_redirects=False)
     assert response.status_code == 302
     assert "/workout-performance" in response.headers["Location"]
 
 
 def test_upload_workout_post_shows_no_file_message_when_no_upload_and_no_disk_file(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(app, "HISTORY_FILE", tmp_path / "Workout_History.csv")
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
+    _configure_auth(monkeypatch, tmp_path)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.post("/upload-workout", data={})
     assert response.status_code == 200
     assert "No upload provided and no DAT file found on disk." in response.get_data(as_text=True)
 
 
 def test_upload_workout_post_shows_parse_error_message_on_bad_dat_upload(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(app, "HISTORY_FILE", tmp_path / "Workout_History.csv")
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
+    _configure_auth(monkeypatch, tmp_path)
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.post(
         "/upload-workout",
         data={"dat_file": (BytesIO("not a valid dat payload".encode("utf-8")), "AARON.DAT")},
         content_type="multipart/form-data",
     )
     assert response.status_code == 200
-    assert "Unable to parse DAT file:" in response.get_data(as_text=True)
+    assert app.DAT_IMPORT_ERROR_MESSAGE in response.get_data(as_text=True)
 
 
 def test_table_header_filter_ui_renders(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data(
         [
@@ -438,10 +498,9 @@ def test_table_header_filter_ui_renders(monkeypatch, tmp_path) -> None:
     df.to_csv(history_file, index=False)
 
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/workout-performance")
 
     assert response.status_code == 200
@@ -452,16 +511,16 @@ def test_table_header_filter_ui_renders(monkeypatch, tmp_path) -> None:
 
 
 def test_workout_performance_defaults_start_date_to_one_year_ago(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data([_sample_workout(3, 1, 2026, 0, 30)])
     df.to_csv(history_file, index=False)
 
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
     monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/workout-performance")
 
     assert response.status_code == 200
@@ -469,6 +528,7 @@ def test_workout_performance_defaults_start_date_to_one_year_ago(monkeypatch, tm
 
 
 def test_workout_performance_table_respects_selected_date_range(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
     df = app.load_workout_data(
         [
@@ -480,10 +540,9 @@ def test_workout_performance_table_respects_selected_date_range(monkeypatch, tmp
     df.to_csv(history_file, index=False)
 
     monkeypatch.setattr(app, "HISTORY_FILE", history_file)
-    monkeypatch.setattr(app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app, "DAT_FILE", tmp_path / "AARON.DAT")
 
     client = app.app.test_client()
+    _log_in(client)
     response = client.get("/workout-performance?start_date=2026-01-15&end_date=2026-01-15")
 
     assert response.status_code == 200
@@ -493,3 +552,429 @@ def test_workout_performance_table_respects_selected_date_range(monkeypatch, tmp
     assert ">1.0<" not in text
     assert ">3.0<" not in text
     assert "table-container-fixed" in text
+
+
+def test_login_required_redirects_to_login(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/login")
+
+
+def test_api_requires_authentication(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    response = client.get("/api/grafana/workouts")
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "Authentication required."}
+
+
+def test_register_creates_user_and_logs_in(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    response = client.post(
+        "/register",
+        data={
+            "email": "athlete@example.com",
+            "password": "password123",
+            "confirm_password": "password123",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+    user = app.get_user_by_email("athlete@example.com")
+    assert user is not None
+
+
+def test_login_accepts_registered_user(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_user()
+    client = app.app.test_client()
+    response = client.post(
+        "/login",
+        data={"email": "athlete@example.com", "password": "password123"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
+def test_forgot_password_sends_reset_email(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_user()
+    sent = {}
+
+    def fake_send(email: str, reset_link: str) -> None:
+        sent["email"] = email
+        sent["reset_link"] = reset_link
+
+    monkeypatch.setattr(app, "send_password_reset_email", fake_send)
+    client = app.app.test_client()
+    response = client.post("/forgot-password", data={"email": "athlete@example.com"})
+    text = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "password reset link has been sent" in text
+    assert sent["email"] == "athlete@example.com"
+    assert "/reset-password/" in sent["reset_link"]
+
+
+def test_reset_password_updates_stored_password(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    user = _create_user()
+    token = app.generate_password_reset_token(str(user["email"]))
+    client = app.app.test_client()
+    response = client.post(
+        f"/reset-password/{token}",
+        data={"password": "newpassword123", "confirm_password": "newpassword123"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+    updated = app.get_user_by_email("athlete@example.com")
+    assert updated is not None
+    assert app.check_password_hash(str(updated["password_hash"]), "newpassword123")
+
+
+def test_invalid_reset_token_shows_error(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    response = client.get("/reset-password/bad-token")
+    assert response.status_code == 200
+    assert "invalid or has expired" in response.get_data(as_text=True)
+
+
+def test_load_dotenv_file_loads_quoted_values_and_skips_existing(monkeypatch, tmp_path) -> None:
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text(
+        "\n".join(
+            [
+                "# comment",
+                "KEEP_ME=from-file",
+                'QUOTED="quoted value"',
+                "SPACED = spaced-value",
+                "INVALID_LINE",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KEEP_ME", "already-set")
+    monkeypatch.delenv("QUOTED", raising=False)
+    monkeypatch.delenv("SPACED", raising=False)
+
+    app.load_dotenv_file(dotenv_file)
+
+    assert os.environ["KEEP_ME"] == "already-set"
+    assert os.environ["QUOTED"] == "quoted value"
+    assert os.environ["SPACED"] == "spaced-value"
+
+
+def test_env_first_returns_default_when_no_values_set(monkeypatch) -> None:
+    monkeypatch.delenv("FIRST_OPTION", raising=False)
+    monkeypatch.delenv("SECOND_OPTION", raising=False)
+    assert app.env_first("FIRST_OPTION", "SECOND_OPTION", default="fallback") == "fallback"
+
+
+def test_env_first_returns_first_non_blank_value(monkeypatch) -> None:
+    monkeypatch.setenv("FIRST_OPTION", "   ")
+    monkeypatch.setenv("SECOND_OPTION", " chosen ")
+    assert app.env_first("FIRST_OPTION", "SECOND_OPTION", default="fallback") == "chosen"
+
+
+def test_get_user_helpers_return_none_for_missing_inputs(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    assert app.get_user_by_email("") is None
+    assert app.get_user_by_id(None) is None
+
+
+def test_create_user_raises_when_created_user_cannot_be_loaded(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    original_get_user_by_id = app.get_user_by_id
+    monkeypatch.setattr(app, "get_user_by_id", lambda _user_id: None)
+    try:
+        try:
+            app.create_user("missing@example.com", "password123")
+        except RuntimeError as exc:
+            assert "could not be loaded" in str(exc)
+        else:
+            raise AssertionError("Expected RuntimeError when created user cannot be reloaded")
+    finally:
+        monkeypatch.setattr(app, "get_user_by_id", original_get_user_by_id)
+
+
+def test_logout_current_user_clears_session(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    _log_in(client)
+    with client.session_transaction() as flask_session:
+        assert app.USER_SESSION_KEY in flask_session
+    client.get("/logout")
+    with client.session_transaction() as flask_session:
+        assert app.USER_SESSION_KEY not in flask_session
+
+
+def test_password_is_valid_rejects_short_passwords() -> None:
+    assert app.password_is_valid("short") is False
+
+
+def test_send_password_reset_email_logs_when_mail_server_not_configured(monkeypatch) -> None:
+    logged = {}
+    monkeypatch.setattr(app, "MAIL_SERVER", "")
+    monkeypatch.setattr(app.app.logger, "info", lambda message, email, link: logged.update({"message": message, "email": email, "link": link}))
+    app.send_password_reset_email("athlete@example.com", "https://example.com/reset")
+    assert "MAIL_SERVER not configured" in logged["message"]
+    assert logged["email"] == "athlete@example.com"
+
+
+def test_send_password_reset_email_uses_tls_and_login(monkeypatch) -> None:
+    smtp = _DummySMTP()
+    monkeypatch.setattr(app, "MAIL_SERVER", "smtp.example.com")
+    monkeypatch.setattr(app, "MAIL_PORT", 587)
+    monkeypatch.setattr(app, "MAIL_USERNAME", "user@example.com")
+    monkeypatch.setattr(app, "MAIL_PASSWORD", "secret")
+    monkeypatch.setattr(app, "MAIL_USE_TLS", True)
+    monkeypatch.setattr(app, "MAIL_USE_SSL", False)
+    monkeypatch.setattr(app.smtplib, "SMTP", lambda *args, **kwargs: smtp)
+
+    app.send_password_reset_email("athlete@example.com", "https://example.com/reset")
+
+    assert smtp.started_tls is True
+    assert smtp.logged_in == ("user@example.com", "secret")
+    assert smtp.sent_message["To"] == "athlete@example.com"
+
+
+def test_send_password_reset_email_uses_ssl_without_starttls(monkeypatch) -> None:
+    smtp = _DummySMTP()
+    monkeypatch.setattr(app, "MAIL_SERVER", "smtp.example.com")
+    monkeypatch.setattr(app, "MAIL_PORT", 465)
+    monkeypatch.setattr(app, "MAIL_USERNAME", "")
+    monkeypatch.setattr(app, "MAIL_USE_TLS", True)
+    monkeypatch.setattr(app, "MAIL_USE_SSL", True)
+    monkeypatch.setattr(app.smtplib, "SMTP_SSL", lambda *args, **kwargs: smtp)
+
+    app.send_password_reset_email("athlete@example.com", "https://example.com/reset")
+
+    assert smtp.started_tls is False
+    assert smtp.logged_in is None
+    assert smtp.sent_message["To"] == "athlete@example.com"
+
+
+def test_build_reset_link_uses_public_base_url(monkeypatch) -> None:
+    monkeypatch.setattr(app, "PUBLIC_BASE_URL", "https://schwinn.example.com")
+    with app.app.test_request_context():
+        assert app.build_reset_link("token-123") == "https://schwinn.example.com/reset-password/token-123"
+
+
+def test_summarize_window_defaults_today_when_not_provided(monkeypatch) -> None:
+    monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
+    df = app.load_workout_data([_sample_workout(3, 17, 2026, 0, 30, distance=4.2)])
+    summary = app.summarize_window(df, days=1)
+    assert summary["workout_count"] == 1
+    assert summary["distance"] == 4.2
+
+
+def test_format_minutes_formats_hour_and_minutes_variants() -> None:
+    assert app.format_minutes(60) == "1h"
+    assert app.format_minutes(45) == "45m"
+
+
+def test_parse_field_selection_accepts_field_array_variant() -> None:
+    with app.app.test_request_context("/?field[]=Distance&field[]=Avg_Speed"):
+        assert app.parse_field_selection(request.args) == ["Distance", "Avg_Speed"]
+
+
+def test_login_redirects_authenticated_user(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.get("/login", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
+def test_login_rejects_invalid_credentials(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_user()
+    client = app.app.test_client()
+    response = client.post("/login", data={"email": "athlete@example.com", "password": "wrong-password"})
+    assert response.status_code == 200
+    assert "We couldn&#39;t sign you in with that email and password." in response.get_data(as_text=True)
+
+
+def test_login_redirects_to_next_path_when_safe(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_user()
+    client = app.app.test_client()
+    response = client.post(
+        "/login",
+        data={"email": "athlete@example.com", "password": "password123", "next": "/workout-performance"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/workout-performance")
+
+
+def test_login_ignores_unsafe_next_url(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_user()
+    client = app.app.test_client()
+    response = client.post(
+        "/login",
+        data={"email": "athlete@example.com", "password": "password123", "next": "https://evil.example"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
+def test_register_redirects_authenticated_user(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.get("/register", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
+def test_register_validation_messages(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    cases = [
+        ({"email": "", "password": "password123", "confirm_password": "password123"}, "Enter an email address"),
+        ({"email": "bad-email", "password": "password123", "confirm_password": "password123"}, "Enter a valid email"),
+        ({"email": "athlete@example.com", "password": "short", "confirm_password": "short"}, "at least 8 characters"),
+        ({"email": "athlete@example.com", "password": "password123", "confirm_password": "different"}, "Passwords did not match"),
+    ]
+    for payload, message in cases:
+        response = client.post("/register", data=payload)
+        assert response.status_code == 200
+        assert message in response.get_data(as_text=True)
+
+
+def test_register_rejects_duplicate_email(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_user()
+    client = app.app.test_client()
+    response = client.post(
+        "/register",
+        data={"email": "athlete@example.com", "password": "password123", "confirm_password": "password123"},
+    )
+    assert response.status_code == 200
+    assert "already registered" in response.get_data(as_text=True)
+
+
+def test_forgot_password_get_renders_page(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    response = client.get("/forgot-password")
+    assert response.status_code == 200
+    assert "Recover Password" in response.get_data(as_text=True)
+
+
+def test_forgot_password_handles_email_delivery_failure(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_user()
+    monkeypatch.setattr(app, "send_password_reset_email", lambda _email, _link: (_ for _ in ()).throw(RuntimeError("smtp down")))
+    client = app.app.test_client()
+    response = client.post("/forgot-password", data={"email": "athlete@example.com"})
+    assert response.status_code == 200
+    assert "We couldn&#39;t send the password reset email right now. Please try again." in response.get_data(as_text=True)
+
+
+def test_reset_password_get_renders_valid_form(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    user = _create_user()
+    token = app.generate_password_reset_token(str(user["email"]))
+    client = app.app.test_client()
+    response = client.get(f"/reset-password/{token}")
+    assert response.status_code == 200
+    assert "Set a new password" in response.get_data(as_text=True)
+
+
+def test_reset_password_rejects_short_password(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    user = _create_user()
+    token = app.generate_password_reset_token(str(user["email"]))
+    client = app.app.test_client()
+    response = client.post(f"/reset-password/{token}", data={"password": "short", "confirm_password": "short"})
+    assert response.status_code == 200
+    assert "at least 8 characters" in response.get_data(as_text=True)
+
+
+def test_reset_password_rejects_mismatch(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    user = _create_user()
+    token = app.generate_password_reset_token(str(user["email"]))
+    client = app.app.test_client()
+    response = client.post(
+        f"/reset-password/{token}",
+        data={"password": "newpassword123", "confirm_password": "different"},
+    )
+    assert response.status_code == 200
+    assert "Passwords did not match" in response.get_data(as_text=True)
+
+
+def test_grafana_workouts_skips_nan_values(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+    history_file.write_text(
+        "Workout_Date,Distance,Avg_Speed,Workout_Time,Total_Calories,Heart_Rate,RPM,Level\n"
+        "2026-01-02,,14.2,30,250,132,78,6\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.get("/api/grafana/workouts?field=Distance&field=Avg_Speed")
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert len(payload) == 1
+    assert payload[0]["field"] == "Avg_Speed"
+
+
+def test_grafana_summary_rejects_invalid_field(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.get("/api/grafana/summary?field=Nope")
+    assert response.status_code == 400
+    assert "Unsupported field" in response.get_json()["error"]
+
+
+def test_grafana_summary_returns_none_for_empty_numeric_series(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+    history_file.write_text(
+        "Workout_Date,Distance,Avg_Speed,Workout_Time,Total_Calories,Heart_Rate,RPM,Level\n"
+        "2026-01-02,abc,14.2,30,250,132,78,6\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.get("/api/grafana/summary?field=Distance")
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["averages"]["Distance"] is None
+    assert payload["minimums"]["Distance"] is None
+    assert payload["maximums"]["Distance"] is None
+
+
+def test_upload_history_requires_file_selection(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.post("/upload-history", data={})
+    assert response.status_code == 200
+    assert "Please choose a historical CSV file to import." in response.get_data(as_text=True)
+
+
+def test_upload_history_get_renders_form(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.get("/upload-history")
+    assert response.status_code == 200
+    assert "Load Historical Data" in response.get_data(as_text=True)

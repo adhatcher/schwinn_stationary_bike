@@ -4,7 +4,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
+import smtplib
+from contextlib import contextmanager
 from io import BytesIO, StringIO
+from email.message import EmailMessage
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
@@ -12,20 +16,80 @@ from typing import Iterable
 
 import pandas as pd
 import plotly.graph_objects as go
-from flask import Flask, Response, g, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from werkzeug.security import check_password_hash, generate_password_hash
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+
+def load_dotenv_file(dotenv_path: Path) -> None:
+    if not dotenv_path.exists():
+        return
+
+    for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or key in os.environ:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ[key] = value
+
+
+load_dotenv_file(ROOT_DIR / ".env")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB upload cap
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}
+app.secret_key = os.getenv("SECRET_KEY", "development-only-secret-change-me")
+
+
+def env_first(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return default
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data"))).resolve()
 DAT_FILE = Path(os.getenv("DAT_FILE", str(DATA_DIR / "AARON.DAT"))).resolve()
 HISTORY_FILE = Path(os.getenv("HISTORY_FILE", str(DATA_DIR / "Workout_History.csv"))).resolve()
+AUTH_DB_FILE = Path(os.getenv("AUTH_DB_FILE", str(DATA_DIR / "users.db"))).resolve()
 LOG_DIR = Path(os.getenv("LOG_DIR", str(BASE_DIR / "logs"))).resolve()
 LOG_FILE = Path(os.getenv("LOG_FILE", str(LOG_DIR / "app.log"))).resolve()
 PORT = int(os.getenv("PORT", "8080"))
 HOST = os.getenv("HOST", "127.0.0.1")
+PUBLIC_BASE_URL = env_first("PUBLIC_BASE_URL").rstrip("/")
+SMTP_SECURE = env_first("SMTP_SECURE").lower()
+MAIL_SERVER = env_first("MAIL_SERVER", "SMTP_HOST")
+MAIL_PORT = int(env_first("MAIL_PORT", "SMTP_PORT", default="587"))
+MAIL_USERNAME = env_first("MAIL_USERNAME", "SMTP_NAME")
+MAIL_PASSWORD = env_first("MAIL_PASSWORD", "SMTP_PASSWORD")
+MAIL_USE_TLS = env_first("MAIL_USE_TLS").lower() in {"1", "true", "yes"} or SMTP_SECURE == "tls"
+MAIL_USE_SSL = env_first("MAIL_USE_SSL").lower() in {"1", "true", "yes"} or SMTP_SECURE in {"ssl", "smtps"}
+MAIL_FROM = env_first("MAIL_FROM", "MAIL_FROM_ADDRESS", default=MAIL_USERNAME or "no-reply@schwinn.local")
+PASSWORD_RESET_SALT = "password-reset"
+PASSWORD_RESET_MAX_AGE_SECONDS = int(os.getenv("PASSWORD_RESET_MAX_AGE_SECONDS", "3600"))
+USER_SESSION_KEY = "user_id"
+PUBLIC_ENDPOINTS = {
+    "healthz",
+    "metrics",
+    "login",
+    "register",
+    "forgot_password",
+    "reset_password",
+    "logout",
+    "static",
+}
 
 COLUMN_NAMES = [
     "Workout_Date",
@@ -98,6 +162,157 @@ def configure_logging() -> None:
 
 
 configure_logging()
+
+
+@contextmanager
+def get_db_connection():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(AUTH_DB_FILE)
+    connection.row_factory = sqlite3.Row
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def init_auth_db() -> None:
+    with get_db_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.commit()
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def get_user_by_email(email: str) -> sqlite3.Row | None:
+    normalized = normalize_email(email)
+    if not normalized:
+        return None
+    with get_db_connection() as connection:
+        return connection.execute("SELECT * FROM users WHERE email = ?", (normalized,)).fetchone()
+
+
+def get_user_by_id(user_id: int | None) -> sqlite3.Row | None:
+    if not user_id:
+        return None
+    with get_db_connection() as connection:
+        return connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def create_user(email: str, password: str) -> sqlite3.Row:
+    normalized = normalize_email(email)
+    password_hash = generate_password_hash(password)
+    with get_db_connection() as connection:
+        cursor = connection.execute(
+            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+            (normalized, password_hash),
+        )
+        connection.commit()
+        user_id = int(cursor.lastrowid)
+    user = get_user_by_id(user_id)
+    if user is None:
+        raise RuntimeError("Created user could not be loaded.")
+    return user
+
+
+def update_user_password(user_id: int, password: str) -> None:
+    password_hash = generate_password_hash(password)
+    with get_db_connection() as connection:
+        connection.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        connection.commit()
+
+
+def password_reset_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(app.secret_key)
+
+
+def generate_password_reset_token(email: str) -> str:
+    return password_reset_serializer().dumps(normalize_email(email), salt=PASSWORD_RESET_SALT)
+
+
+def verify_password_reset_token(token: str, *, max_age: int | None = None) -> sqlite3.Row | None:
+    try:
+        email = password_reset_serializer().loads(
+            token,
+            salt=PASSWORD_RESET_SALT,
+            max_age=max_age or PASSWORD_RESET_MAX_AGE_SECONDS,
+        )
+    except (BadSignature, SignatureExpired):
+        return None
+    return get_user_by_email(str(email))
+
+
+def current_user():
+    return get_user_by_id(session.get(USER_SESSION_KEY))
+
+
+def login_user(user: sqlite3.Row) -> None:
+    session.clear()
+    session[USER_SESSION_KEY] = int(user["id"])
+
+
+def logout_current_user() -> None:
+    session.clear()
+
+
+def password_is_valid(password: str) -> bool:
+    return len(password) >= 8
+
+
+def send_password_reset_email(email: str, reset_link: str) -> None:
+    message = EmailMessage()
+    message["Subject"] = "Reset your Schwinn password"
+    message["From"] = MAIL_FROM
+    message["To"] = email
+    message.set_content(
+        "\n".join(
+            [
+                "A password reset was requested for your Schwinn account.",
+                "",
+                f"Reset your password using this link: {reset_link}",
+                "",
+                f"This link expires in {PASSWORD_RESET_MAX_AGE_SECONDS // 60} minutes.",
+                "If you did not request a reset, you can ignore this email.",
+            ]
+        )
+    )
+
+    if not MAIL_SERVER:
+        app.logger.info("Password reset email (MAIL_SERVER not configured): to=%s link=%s", email, reset_link)
+        return
+
+    if MAIL_USE_SSL:
+        smtp = smtplib.SMTP_SSL(MAIL_SERVER, MAIL_PORT, timeout=10)
+    else:
+        smtp = smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=10)
+
+    with smtp:
+        if MAIL_USE_TLS and not MAIL_USE_SSL:
+            smtp.starttls()
+        if MAIL_USERNAME:
+            smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+        smtp.send_message(message)
+
+
+def build_reset_link(token: str) -> str:
+    if PUBLIC_BASE_URL:
+        return f"{PUBLIC_BASE_URL}{url_for('reset_password', token=token)}"
+    return url_for("reset_password", token=token, _external=True)
+
+
+@app.context_processor
+def inject_template_context() -> dict[str, object]:
+    return {"current_user": current_user()}
 
 
 def extract_json_objects(payload: str) -> list[dict]:
@@ -386,6 +601,19 @@ def start_timer() -> None:
     g.request_start = perf_counter()
 
 
+@app.before_request
+def require_login():
+    init_auth_db()
+    endpoint = request.endpoint or ""
+    if endpoint in PUBLIC_ENDPOINTS:
+        return None
+    if current_user() is not None:
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify(error="Authentication required."), 401
+    return redirect(url_for("login", next=request.full_path[:-1] if request.full_path.endswith("?") else request.full_path))
+
+
 @app.after_request
 def observe_request(response):
     endpoint = request.endpoint or request.path
@@ -403,6 +631,117 @@ def healthz():
 @app.route("/metrics", methods=["GET"])
 def metrics():
     return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user() is not None:
+        return redirect(url_for("welcome"))
+
+    message = request.args.get("message", "")
+    next_url = request.values.get("next", "") or request.args.get("next", "")
+
+    if request.method == "POST":
+        email = normalize_email(request.form.get("email", ""))
+        password = request.form.get("password", "")
+        user = get_user_by_email(email)
+        if user and check_password_hash(str(user["password_hash"]), password):
+            login_user(user)
+            if next_url.startswith("/") and not next_url.startswith("//"):
+                return redirect(next_url)
+            return redirect(url_for("welcome"))
+        message = "We couldn't sign you in with that email and password."
+
+    return render_template("login.html", message=message, next_url=next_url)
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if current_user() is not None:
+        return redirect(url_for("welcome"))
+
+    message = ""
+    email = ""
+    if request.method == "POST":
+        email = normalize_email(request.form.get("email", ""))
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not email:
+            message = "Enter an email address to create your account."
+        elif "@" not in email:
+            message = "Enter a valid email address."
+        elif not password_is_valid(password):
+            message = "Choose a password with at least 8 characters."
+        elif password != confirm_password:
+            message = "Passwords did not match. Please try again."
+        elif get_user_by_email(email) is not None:
+            message = "That email address is already registered."
+        else:
+            user = create_user(email, password)
+            login_user(user)
+            return redirect(url_for("welcome"))
+
+    return render_template("register.html", message=message, email=email)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    message = ""
+    if request.method == "POST":
+        email = normalize_email(request.form.get("email", ""))
+        user = get_user_by_email(email)
+        if user is not None:
+            token = generate_password_reset_token(email)
+            reset_link = build_reset_link(token)
+            try:
+                send_password_reset_email(email, reset_link)
+            except Exception:
+                app.logger.exception("Password reset email failed for %s", email)
+                message = "We couldn't send the password reset email right now. Please try again."
+                return render_template("forgot_password.html", message=message, email=email)
+        message = "If that email is registered, a password reset link has been sent."
+        return render_template("forgot_password.html", message=message, email="")
+
+    return render_template("forgot_password.html", message=message, email="")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token: str):
+    user = verify_password_reset_token(token)
+    if user is None:
+        return render_template(
+            "reset_password.html",
+            message="That password reset link is invalid or has expired.",
+            token=token,
+            token_valid=False,
+        )
+
+    message = ""
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        if not password_is_valid(password):
+            message = "Choose a password with at least 8 characters."
+        elif password != confirm_password:
+            message = "Passwords did not match. Please try again."
+        else:
+            update_user_password(int(user["id"]), password)
+            return redirect(url_for("login", message="Your password has been reset. You can sign in now."))
+
+    return render_template(
+        "reset_password.html",
+        message=message,
+        token=token,
+        token_valid=True,
+        reset_email=str(user["email"]),
+    )
+
+
+@app.route("/logout", methods=["GET"])
+def logout():
+    logout_current_user()
+    return redirect(url_for("login", message="You have been signed out."))
 
 
 @app.route("/download-history", methods=["GET"])

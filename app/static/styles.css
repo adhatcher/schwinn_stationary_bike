@@ -28,6 +28,10 @@ body {
   padding: 28px 18px 40px;
 }
 
+.page-narrow {
+  max-width: 840px;
+}
+
 .hero {
   background: linear-gradient(130deg, #171b24 0%, #0f1219 52%, #2c0d13 100%);
   color: #fff;
@@ -38,6 +42,14 @@ body {
 }
 
 .hero-inner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.hero-copy {
   display: flex;
   align-items: center;
   gap: 18px;
@@ -66,6 +78,44 @@ h1 {
   margin: 6px 0 0;
   color: #d4dae8;
   font-size: 14px;
+}
+
+.hero-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.account-label {
+  color: #d4dae8;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hero-links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hero-links a {
+  color: #fff;
+  font: 700 14px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  text-transform: uppercase;
 }
 
 .grid {
@@ -97,7 +147,7 @@ label {
   margin-bottom: 5px;
 }
 
-input[type="date"], input[type="file"] {
+input[type="date"], input[type="file"], input[type="email"], input[type="password"] {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -317,6 +367,33 @@ th {
   font-size: 24px;
   font-weight: 600;
   color: #202738;
+}
+
+.auth-card {
+  max-width: 720px;
+}
+
+.auth-copy {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: #354055;
+}
+
+.auth-links {
+  margin: 14px 0 0;
+  font-size: 14px;
+}
+
+.auth-links a {
+  color: var(--accent-dark);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (max-width: 700px) {
+  .hero-account {
+    width: 100%;
+  }
 }
 
 .summary-section {
