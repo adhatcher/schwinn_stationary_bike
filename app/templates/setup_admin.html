@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create Admin Account</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="page page-narrow">
+  {% set subtitle = "First-run setup: create the initial admin account for this dashboard." %}
+  {% include "_header.html" %}
+
+  <div class="grid">
+    <section class="card auth-card">
+      <h2 class="welcome-title">Create Admin Account</h2>
+      <p class="auth-copy">No admin account exists yet. Create the first admin to finish setup and unlock the dashboard.</p>
+      {% if message %}
+        <div class="message">{{ message }}</div>
+      {% endif %}
+      <form method="post">
+        <div class="row">
+          <div>
+            <label for="email">Admin Email</label>
+            <input type="email" id="email" name="email" value="{{ email }}" autocomplete="email" required>
+          </div>
+          <div>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" autocomplete="new-password" required>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="confirm_password">Confirm Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required>
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn" type="submit">Create Admin</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+</body>
+</html>

@@ -32,11 +32,16 @@
         </div>
         <div class="action-row">
           <button class="btn" type="submit">Log In</button>
-          <a class="btn btn-secondary" href="{{ url_for('register') }}">Create Account</a>
+          {% if registration_enabled %}
+            <a class="btn btn-secondary" href="{{ url_for('register') }}">Create Account</a>
+          {% endif %}
         </div>
       </form>
       <p class="auth-links">
         <a href="{{ url_for('forgot_password') }}">Forgot your password?</a>
+        {% if not registration_enabled %}
+          <span class="muted auth-inline-note">New user registration is disabled.</span>
+        {% endif %}
       </p>
     </section>
   </div>

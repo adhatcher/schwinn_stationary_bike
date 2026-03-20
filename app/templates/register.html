@@ -18,28 +18,34 @@
       {% if message %}
         <div class="message">{{ message }}</div>
       {% endif %}
-      <form method="post">
-        <div class="row">
-          <div>
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" value="{{ email }}" autocomplete="email" required>
+      {% if registration_enabled %}
+        <form method="post">
+          <div class="row">
+            <div>
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" value="{{ email }}" autocomplete="email" required>
+            </div>
+            <div>
+              <label for="password">Password</label>
+              <input type="password" id="password" name="password" autocomplete="new-password" required>
+            </div>
           </div>
-          <div>
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" autocomplete="new-password" required>
+          <div class="row">
+            <div>
+              <label for="confirm_password">Confirm Password</label>
+              <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required>
+            </div>
           </div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="confirm_password">Confirm Password</label>
-            <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required>
+          <div class="action-row">
+            <button class="btn" type="submit">Create Account</button>
+            <a class="btn btn-secondary" href="{{ url_for('login') }}">Back To Login</a>
           </div>
-        </div>
+        </form>
+      {% else %}
         <div class="action-row">
-          <button class="btn" type="submit">Create Account</button>
           <a class="btn btn-secondary" href="{{ url_for('login') }}">Back To Login</a>
         </div>
-      </form>
+      {% endif %}
     </section>
   </div>
 </div>

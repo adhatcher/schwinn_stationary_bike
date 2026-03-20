@@ -104,6 +104,11 @@ h1 {
   text-transform: uppercase;
 }
 
+.account-role {
+  color: #f4d7dd;
+  font-size: 12px;
+}
+
 .hero-links {
   display: flex;
   gap: 12px;
@@ -147,7 +152,7 @@ label {
   margin-bottom: 5px;
 }
 
-input[type="date"], input[type="file"], input[type="email"], input[type="password"] {
+input[type="date"], input[type="file"], input[type="email"], input[type="password"], select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -388,6 +393,45 @@ th {
   color: var(--accent-dark);
   font-weight: 600;
   text-decoration: none;
+}
+
+.auth-inline-note {
+  margin-left: 12px;
+}
+
+.admin-user-list {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-user-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: #fbfcfe;
+}
+
+.admin-user-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.inline-form {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%);
 }
 
 @media (max-width: 700px) {

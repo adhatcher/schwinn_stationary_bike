@@ -46,12 +46,21 @@ def _configure_auth(monkeypatch, tmp_path) -> None:
     app.init_auth_db()
 
 
-def _create_user(email: str = "athlete@example.com", password: str = "password123"):
-    return app.create_user(email, password)
+def _create_user(
+    email: str = "athlete@example.com",
+    password: str = "password123",
+    *,
+    role: str = "user",
+):
+    return app.create_user(email, password, role=role)
+
+
+def _create_admin(email: str = "admin@example.com", password: str = "password123"):
+    return _create_user(email, password, role="admin")
 
 
 def _log_in(client, user=None) -> None:
-    auth_user = user or _create_user()
+    auth_user = user or _create_admin()
     with client.session_transaction() as flask_session:
         flask_session[app.USER_SESSION_KEY] = int(auth_user["id"])
 
@@ -556,6 +565,7 @@ def test_workout_performance_table_respects_selected_date_range(monkeypatch, tmp
 
 def test_login_required_redirects_to_login(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     client = app.app.test_client()
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 302
@@ -564,6 +574,7 @@ def test_login_required_redirects_to_login(monkeypatch, tmp_path) -> None:
 
 def test_api_requires_authentication(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     client = app.app.test_client()
     response = client.get("/api/grafana/workouts")
     assert response.status_code == 401
@@ -572,6 +583,8 @@ def test_api_requires_authentication(monkeypatch, tmp_path) -> None:
 
 def test_register_creates_user_and_logs_in(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    app.set_registration_enabled(True)
     client = app.app.test_client()
     response = client.post(
         "/register",
@@ -590,6 +603,7 @@ def test_register_creates_user_and_logs_in(monkeypatch, tmp_path) -> None:
 
 def test_login_accepts_registered_user(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     _create_user()
     client = app.app.test_client()
     response = client.post(
@@ -603,6 +617,7 @@ def test_login_accepts_registered_user(monkeypatch, tmp_path) -> None:
 
 def test_forgot_password_sends_reset_email(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     _create_user()
     sent = {}
 
@@ -622,6 +637,7 @@ def test_forgot_password_sends_reset_email(monkeypatch, tmp_path) -> None:
 
 def test_reset_password_updates_stored_password(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     user = _create_user()
     token = app.generate_password_reset_token(str(user["email"]))
     client = app.app.test_client()
@@ -639,6 +655,7 @@ def test_reset_password_updates_stored_password(monkeypatch, tmp_path) -> None:
 
 def test_invalid_reset_token_shows_error(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     client = app.app.test_client()
     response = client.get("/reset-password/bad-token")
     assert response.status_code == 200
@@ -796,6 +813,7 @@ def test_login_redirects_authenticated_user(monkeypatch, tmp_path) -> None:
 
 def test_login_rejects_invalid_credentials(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     _create_user()
     client = app.app.test_client()
     response = client.post("/login", data={"email": "athlete@example.com", "password": "wrong-password"})
@@ -805,6 +823,7 @@ def test_login_rejects_invalid_credentials(monkeypatch, tmp_path) -> None:
 
 def test_login_redirects_to_next_path_when_safe(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     _create_user()
     client = app.app.test_client()
     response = client.post(
@@ -818,6 +837,7 @@ def test_login_redirects_to_next_path_when_safe(monkeypatch, tmp_path) -> None:
 
 def test_login_ignores_unsafe_next_url(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     _create_user()
     client = app.app.test_client()
     response = client.post(
@@ -840,6 +860,8 @@ def test_register_redirects_authenticated_user(monkeypatch, tmp_path) -> None:
 
 def test_register_validation_messages(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    app.set_registration_enabled(True)
     client = app.app.test_client()
     cases = [
         ({"email": "", "password": "password123", "confirm_password": "password123"}, "Enter an email address"),
@@ -855,6 +877,8 @@ def test_register_validation_messages(monkeypatch, tmp_path) -> None:
 
 def test_register_rejects_duplicate_email(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    app.set_registration_enabled(True)
     _create_user()
     client = app.app.test_client()
     response = client.post(
@@ -867,6 +891,7 @@ def test_register_rejects_duplicate_email(monkeypatch, tmp_path) -> None:
 
 def test_forgot_password_get_renders_page(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     client = app.app.test_client()
     response = client.get("/forgot-password")
     assert response.status_code == 200
@@ -875,6 +900,7 @@ def test_forgot_password_get_renders_page(monkeypatch, tmp_path) -> None:
 
 def test_forgot_password_handles_email_delivery_failure(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     _create_user()
     monkeypatch.setattr(app, "send_password_reset_email", lambda _email, _link: (_ for _ in ()).throw(RuntimeError("smtp down")))
     client = app.app.test_client()
@@ -885,6 +911,7 @@ def test_forgot_password_handles_email_delivery_failure(monkeypatch, tmp_path) -
 
 def test_reset_password_get_renders_valid_form(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     user = _create_user()
     token = app.generate_password_reset_token(str(user["email"]))
     client = app.app.test_client()
@@ -895,6 +922,7 @@ def test_reset_password_get_renders_valid_form(monkeypatch, tmp_path) -> None:
 
 def test_reset_password_rejects_short_password(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     user = _create_user()
     token = app.generate_password_reset_token(str(user["email"]))
     client = app.app.test_client()
@@ -905,6 +933,7 @@ def test_reset_password_rejects_short_password(monkeypatch, tmp_path) -> None:
 
 def test_reset_password_rejects_mismatch(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
     user = _create_user()
     token = app.generate_password_reset_token(str(user["email"]))
     client = app.app.test_client()
@@ -978,3 +1007,164 @@ def test_upload_history_get_renders_form(monkeypatch, tmp_path) -> None:
     response = client.get("/upload-history")
     assert response.status_code == 200
     assert "Load Historical Data" in response.get_data(as_text=True)
+
+
+def test_bootstrap_redirects_to_setup_admin_when_no_admin_exists(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/setup-admin")
+
+
+def test_setup_admin_creates_first_admin_and_disables_registration(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    response = client.post(
+        "/setup-admin",
+        data={
+            "email": "owner@example.com",
+            "password": "password123",
+            "confirm_password": "password123",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin?message=Admin+account+created.")
+    user = app.get_user_by_email("owner@example.com")
+    assert user is not None
+    assert user["role"] == "admin"
+    assert app.is_registration_enabled() is False
+
+
+def test_setup_admin_redirects_to_login_once_admin_exists(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    client = app.app.test_client()
+    response = client.get("/setup-admin", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/login")
+
+
+def test_register_is_disabled_by_default(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    client = app.app.test_client()
+    response = client.get("/register")
+    assert response.status_code == 403
+    assert "registration is currently disabled" in response.get_data(as_text=True)
+
+
+def test_admin_dashboard_updates_registration_setting(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    client = app.app.test_client()
+    _log_in(client, _create_admin())
+    response = client.post("/admin", data={"registration_enabled": "true"})
+    assert response.status_code == 200
+    assert app.is_registration_enabled() is True
+    assert "Registration settings updated." in response.get_data(as_text=True)
+
+
+def test_non_admin_cannot_access_admin_pages(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    user = _create_user("user@example.com")
+    client = app.app.test_client()
+    _log_in(client, user)
+    response = client.get("/admin", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
+def test_admin_can_create_user_and_send_setup_email(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    sent = {}
+
+    def fake_send(email: str, reset_link: str) -> None:
+        sent["email"] = email
+        sent["reset_link"] = reset_link
+
+    monkeypatch.setattr(app, "send_password_reset_email", fake_send)
+    client = app.app.test_client()
+    _log_in(client, _create_admin())
+    response = client.post(
+        "/admin/users",
+        data={"action": "create_user", "email": "newuser@example.com", "role": "user"},
+    )
+    assert response.status_code == 200
+    created = app.get_user_by_email("newuser@example.com")
+    assert created is not None
+    assert created["role"] == "user"
+    assert sent["email"] == "newuser@example.com"
+    assert "password setup email" in response.get_data(as_text=True)
+
+
+def test_admin_can_update_user_role(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin_user = _create_admin()
+    managed_user = _create_user("member@example.com")
+    client = app.app.test_client()
+    _log_in(client, admin_user)
+    response = client.post(
+        "/admin/users",
+        data={"action": "update_role", "user_id": str(managed_user["id"]), "role": "admin"},
+    )
+    assert response.status_code == 200
+    updated = app.get_user_by_email("member@example.com")
+    assert updated is not None
+    assert updated["role"] == "admin"
+
+
+def test_admin_can_delete_user(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin_user = _create_admin()
+    managed_user = _create_user("member@example.com")
+    client = app.app.test_client()
+    _log_in(client, admin_user)
+    response = client.post("/admin/users", data={"action": "delete_user", "user_id": str(managed_user["id"])})
+    assert response.status_code == 200
+    assert app.get_user_by_email("member@example.com") is None
+
+
+def test_last_admin_cannot_be_deleted(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin_user = _create_admin()
+    client = app.app.test_client()
+    _log_in(client, admin_user)
+    response = client.post("/admin/users", data={"action": "delete_user", "user_id": str(admin_user["id"])})
+    assert response.status_code == 200
+    assert "last admin account" in response.get_data(as_text=True)
+    assert app.get_user_by_email("admin@example.com") is not None
+
+
+def test_last_admin_cannot_be_demoted(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin_user = _create_admin()
+    client = app.app.test_client()
+    _log_in(client, admin_user)
+    response = client.post(
+        "/admin/users",
+        data={"action": "update_role", "user_id": str(admin_user["id"]), "role": "user"},
+    )
+    assert response.status_code == 200
+    assert "last admin account" in response.get_data(as_text=True)
+    assert app.get_user_by_email("admin@example.com")["role"] == "admin"
+
+
+def test_admin_can_send_reset_email_for_existing_user(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin_user = _create_admin()
+    managed_user = _create_user("member@example.com")
+    sent = {}
+
+    def fake_send(email: str, reset_link: str) -> None:
+        sent["email"] = email
+        sent["reset_link"] = reset_link
+
+    monkeypatch.setattr(app, "send_password_reset_email", fake_send)
+    client = app.app.test_client()
+    _log_in(client, admin_user)
+    response = client.post("/admin/users", data={"action": "send_reset", "user_id": str(managed_user["id"])})
+    assert response.status_code == 200
+    assert sent["email"] == "member@example.com"
+    assert "/reset-password/" in sent["reset_link"]

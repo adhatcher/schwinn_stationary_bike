@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="page">
+  {% set subtitle = "Admin controls for registration and account management." %}
+  {% include "_header.html" %}
+
+  <div class="grid">
+    <section class="card form-card">
+      <h2>Admin Settings</h2>
+      {% if message %}
+        <div class="message">{{ message }}</div>
+      {% endif %}
+      <form method="post">
+        <label for="registration_enabled">New User Registration</label>
+        <select id="registration_enabled" name="registration_enabled">
+          <option value="false" {% if not registration_enabled %}selected{% endif %}>Disabled</option>
+          <option value="true" {% if registration_enabled %}selected{% endif %}>Enabled</option>
+        </select>
+        <div class="action-row">
+          <button class="btn" type="submit">Save Settings</button>
+          <a class="btn btn-secondary" href="{{ url_for('admin_users') }}">Manage Users</a>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+</body>
+</html>

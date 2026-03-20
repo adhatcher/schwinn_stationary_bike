@@ -29,7 +29,6 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requiremen
 
 COPY app/app.py ./app.py
 COPY app/templates ./templates
-COPY app/data ./data
 COPY app/static ./static
 
 EXPOSE 8080

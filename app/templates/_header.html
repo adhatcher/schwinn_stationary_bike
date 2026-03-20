@@ -16,10 +16,15 @@
         <div class="account-card">
           <span class="account-label">Signed In</span>
           <strong>{{ current_user["email"] }}</strong>
+          <span class="account-role">{{ current_user["role"]|title }}</span>
         </div>
         <div class="hero-links">
           <a href="{{ url_for('welcome') }}">Home</a>
           <a href="{{ url_for('workout_performance') }}">Dashboard</a>
+          {% if current_user["role"] == "admin" %}
+            <a href="{{ url_for('admin_dashboard') }}">Admin</a>
+            <a href="{{ url_for('admin_users') }}">Users</a>
+          {% endif %}
           <a href="{{ url_for('logout') }}">Log Out</a>
         </div>
       </div>

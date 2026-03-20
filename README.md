@@ -9,7 +9,7 @@ Flask replacement for `read_file.py` that:
 - merges imported workouts into `Workout_History.csv`
 - lets you pick date range and fields to graph dynamically
 - requires account login before users can view or modify dashboard data
-- supports email/password registration and password reset by email
+- supports bootstrap admin setup, admin-managed users, and password reset by email
 - exposes health and Prometheus metrics endpoints
 - logs to rotating files (`100MB`, `5` backups)
 
@@ -52,10 +52,18 @@ The dashboard now protects all pages, imports, downloads, and Grafana APIs behin
 
 - `GET /healthz`
 - `GET /metrics`
+- `GET|POST /setup-admin`
 - `GET|POST /login`
 - `GET|POST /register`
 - `GET|POST /forgot-password`
 - `GET|POST /reset-password/<token>`
+
+On a fresh install, the app opens to `setup-admin` until the first admin account is created. After bootstrap:
+
+- new user registration is disabled by default
+- admin users can enable or disable registration from `/admin`
+- admin users can manage accounts from `/admin/users`
+- admin-created users are onboarded by password reset email instead of a preset password
 
 Set a strong secret key before running outside local development:
 
@@ -142,6 +150,7 @@ docker run --rm \
 Put your bike export file at `app/data/<user>.DAT`.
 `DATA_DIR` controls where uploaded files and `Workout_History.csv` are stored.
 `PORT` controls the listen port inside the container.
+Runtime data such as `users.db` and `Workout_History.csv` should come from the mounted `/app/data` volume, not from the image itself.
 
 ## Docker compose
 

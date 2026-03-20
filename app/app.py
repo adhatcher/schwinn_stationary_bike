@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import smtplib
 from contextlib import contextmanager
@@ -83,6 +84,7 @@ USER_SESSION_KEY = "user_id"
 PUBLIC_ENDPOINTS = {
     "healthz",
     "metrics",
+    "setup_admin",
     "login",
     "register",
     "forgot_password",
@@ -90,6 +92,10 @@ PUBLIC_ENDPOINTS = {
     "logout",
     "static",
 }
+BOOTSTRAP_ALLOWED_ENDPOINTS = {"healthz", "metrics", "setup_admin", "static"}
+ADMIN_ROLE = "admin"
+USER_ROLE = "user"
+VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
 
 COLUMN_NAMES = [
     "Workout_Date",
@@ -183,9 +189,27 @@ def init_auth_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
+        )
+        existing_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if "role" not in existing_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+            ("registration_enabled", "false"),
         )
         connection.commit()
 
@@ -209,13 +233,15 @@ def get_user_by_id(user_id: int | None) -> sqlite3.Row | None:
         return connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
 
-def create_user(email: str, password: str) -> sqlite3.Row:
+def create_user(email: str, password: str, *, role: str = USER_ROLE) -> sqlite3.Row:
     normalized = normalize_email(email)
+    if role not in VALID_ROLES:
+        raise ValueError(f"Unsupported role: {role}")
     password_hash = generate_password_hash(password)
     with get_db_connection() as connection:
         cursor = connection.execute(
-            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
-            (normalized, password_hash),
+            "INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)",
+            (normalized, password_hash, role),
         )
         connection.commit()
         user_id = int(cursor.lastrowid)
@@ -230,6 +256,63 @@ def update_user_password(user_id: int, password: str) -> None:
     with get_db_connection() as connection:
         connection.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
         connection.commit()
+
+
+def update_user_role(user_id: int, role: str) -> None:
+    if role not in VALID_ROLES:
+        raise ValueError(f"Unsupported role: {role}")
+    with get_db_connection() as connection:
+        connection.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+        connection.commit()
+
+
+def delete_user(user_id: int) -> None:
+    with get_db_connection() as connection:
+        connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        connection.commit()
+
+
+def list_users() -> list[sqlite3.Row]:
+    with get_db_connection() as connection:
+        return connection.execute("SELECT * FROM users ORDER BY email ASC").fetchall()
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with get_db_connection() as connection:
+        row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    if row is None:
+        return default
+    return str(row["value"])
+
+
+def set_setting(key: str, value: str) -> None:
+    with get_db_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO settings (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+        connection.commit()
+
+
+def is_registration_enabled() -> bool:
+    return get_setting("registration_enabled", "false").lower() == "true"
+
+
+def set_registration_enabled(enabled: bool) -> None:
+    set_setting("registration_enabled", "true" if enabled else "false")
+
+
+def admin_count() -> int:
+    with get_db_connection() as connection:
+        row = connection.execute("SELECT COUNT(*) AS count FROM users WHERE role = ?", (ADMIN_ROLE,)).fetchone()
+    return int(row["count"]) if row else 0
+
+
+def admin_exists() -> bool:
+    return admin_count() > 0
 
 
 def password_reset_serializer() -> URLSafeTimedSerializer:
@@ -256,6 +339,11 @@ def current_user():
     return get_user_by_id(session.get(USER_SESSION_KEY))
 
 
+def current_user_is_admin() -> bool:
+    user = current_user()
+    return bool(user and str(user["role"]) == ADMIN_ROLE)
+
+
 def login_user(user: sqlite3.Row) -> None:
     session.clear()
     session[USER_SESSION_KEY] = int(user["id"])
@@ -267,6 +355,10 @@ def logout_current_user() -> None:
 
 def password_is_valid(password: str) -> bool:
     return len(password) >= 8
+
+
+def generate_temporary_password() -> str:
+    return secrets.token_urlsafe(18)
 
 
 def send_password_reset_email(email: str, reset_link: str) -> None:
@@ -312,7 +404,11 @@ def build_reset_link(token: str) -> str:
 
 @app.context_processor
 def inject_template_context() -> dict[str, object]:
-    return {"current_user": current_user()}
+    return {
+        "current_user": current_user(),
+        "registration_enabled": is_registration_enabled(),
+        "admin_exists": admin_exists(),
+    }
 
 
 def extract_json_objects(payload: str) -> list[dict]:
@@ -605,6 +701,8 @@ def start_timer() -> None:
 def require_login():
     init_auth_db()
     endpoint = request.endpoint or ""
+    if not admin_exists() and endpoint not in BOOTSTRAP_ALLOWED_ENDPOINTS:
+        return redirect(url_for("setup_admin"))
     if endpoint in PUBLIC_ENDPOINTS:
         return None
     if current_user() is not None:
@@ -635,6 +733,8 @@ def metrics():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if not admin_exists():
+        return redirect(url_for("setup_admin"))
     if current_user() is not None:
         return redirect(url_for("welcome"))
 
@@ -657,8 +757,12 @@ def login():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if not admin_exists():
+        return redirect(url_for("setup_admin"))
     if current_user() is not None:
         return redirect(url_for("welcome"))
+    if not is_registration_enabled():
+        return render_template("register.html", message="New user registration is currently disabled.", email=""), 403
 
     message = ""
     email = ""
@@ -678,7 +782,7 @@ def register():
         elif get_user_by_email(email) is not None:
             message = "That email address is already registered."
         else:
-            user = create_user(email, password)
+            user = create_user(email, password, role=USER_ROLE)
             login_user(user)
             return redirect(url_for("welcome"))
 
@@ -687,6 +791,8 @@ def register():
 
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
+    if not admin_exists():
+        return redirect(url_for("setup_admin"))
     message = ""
     if request.method == "POST":
         email = normalize_email(request.form.get("email", ""))
@@ -708,6 +814,8 @@ def forgot_password():
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
 def reset_password(token: str):
+    if not admin_exists():
+        return redirect(url_for("setup_admin"))
     user = verify_password_reset_token(token)
     if user is None:
         return render_template(
@@ -741,7 +849,125 @@ def reset_password(token: str):
 @app.route("/logout", methods=["GET"])
 def logout():
     logout_current_user()
-    return redirect(url_for("login", message="You have been signed out."))
+    return redirect(url_for("setup_admin" if not admin_exists() else "login", message="You have been signed out."))
+
+
+@app.route("/setup-admin", methods=["GET", "POST"])
+def setup_admin():
+    if admin_exists():
+        if current_user() is not None:
+            return redirect(url_for("welcome"))
+        return redirect(url_for("login"))
+
+    message = ""
+    email = ""
+    if request.method == "POST":
+        email = normalize_email(request.form.get("email", ""))
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not email:
+            message = "Enter an email address for the admin account."
+        elif "@" not in email:
+            message = "Enter a valid email address."
+        elif not password_is_valid(password):
+            message = "Choose a password with at least 8 characters."
+        elif password != confirm_password:
+            message = "Passwords did not match. Please try again."
+        else:
+            user = create_user(email, password, role=ADMIN_ROLE)
+            set_registration_enabled(False)
+            login_user(user)
+            return redirect(url_for("admin_dashboard", message="Admin account created."))
+
+    return render_template("setup_admin.html", message=message, email=email)
+
+
+def admin_required():
+    if not current_user_is_admin():
+        return redirect(url_for("welcome"))
+    return None
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin_dashboard():
+    guard = admin_required()
+    if guard is not None:
+        return guard
+
+    message = request.args.get("message", "")
+    if request.method == "POST":
+        enabled = request.form.get("registration_enabled") == "true"
+        set_registration_enabled(enabled)
+        message = "Registration settings updated."
+
+    return render_template("admin.html", message=message)
+
+
+@app.route("/admin/users", methods=["GET", "POST"])
+def admin_users():
+    guard = admin_required()
+    if guard is not None:
+        return guard
+
+    message = request.args.get("message", "")
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        target_email = normalize_email(request.form.get("email", ""))
+        target_role = request.form.get("role", USER_ROLE)
+        target_id_raw = request.form.get("user_id", "")
+        target_id = int(target_id_raw) if target_id_raw.isdigit() else None
+        target_user = get_user_by_id(target_id)
+
+        if action == "create_user":
+            if not target_email:
+                message = "Enter an email address for the new user."
+            elif "@" not in target_email:
+                message = "Enter a valid email address."
+            elif target_role not in VALID_ROLES:
+                message = "Choose a valid user role."
+            elif get_user_by_email(target_email) is not None:
+                message = "That email address already belongs to an existing user."
+            else:
+                temporary_password = generate_temporary_password()
+                create_user(target_email, temporary_password, role=target_role)
+                reset_link = build_reset_link(generate_password_reset_token(target_email))
+                try:
+                    send_password_reset_email(target_email, reset_link)
+                    message = f"Created {target_email} and sent a password setup email."
+                except Exception:
+                    app.logger.exception("Admin-triggered welcome reset email failed for %s", target_email)
+                    message = f"Created {target_email}, but the password setup email could not be sent."
+        elif action == "delete_user" and target_user is not None:
+            if str(target_user["role"]) == ADMIN_ROLE and admin_count() == 1:
+                message = "You cannot delete the last admin account."
+            else:
+                delete_user(int(target_user["id"]))
+                message = f"Deleted {target_user['email']}."
+        elif action == "update_role" and target_user is not None:
+            if target_role not in VALID_ROLES:
+                message = "Choose a valid user role."
+            elif (
+                str(target_user["role"]) == ADMIN_ROLE
+                and target_role != ADMIN_ROLE
+                and admin_count() == 1
+            ):
+                message = "You cannot demote the last admin account."
+            else:
+                update_user_role(int(target_user["id"]), target_role)
+                message = f"Updated {target_user['email']} to {target_role}."
+        elif action == "send_reset" and target_user is not None:
+            reset_link = build_reset_link(generate_password_reset_token(str(target_user["email"])))
+            try:
+                send_password_reset_email(str(target_user["email"]), reset_link)
+                message = f"Sent a password reset email to {target_user['email']}."
+            except Exception:
+                app.logger.exception("Admin-triggered password reset email failed for %s", target_user["email"])
+                message = f"Could not send a password reset email to {target_user['email']}."
+        else:
+            message = "The requested admin action could not be completed."
+
+    return render_template("admin_users.html", message=message, users=list_users(), roles=sorted(VALID_ROLES))
 
 
 @app.route("/download-history", methods=["GET"])

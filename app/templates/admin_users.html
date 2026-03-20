@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User Administration</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="page">
+  {% set subtitle = "Manage users, roles, and password reset emails." %}
+  {% include "_header.html" %}
+
+  <div class="grid">
+    <section class="card form-card">
+      <h2>Add User</h2>
+      {% if message %}
+        <div class="message">{{ message }}</div>
+      {% endif %}
+      <form method="post">
+        <input type="hidden" name="action" value="create_user">
+        <div class="row">
+          <div>
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" autocomplete="email" required>
+          </div>
+          <div>
+            <label for="role">Role</label>
+            <select id="role" name="role">
+              {% for role in roles %}
+                <option value="{{ role }}">{{ role|title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn" type="submit">Create User</button>
+          <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Back To Admin</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>User Accounts</h2>
+      <div class="admin-user-list">
+        {% for user in users %}
+          <article class="admin-user-card">
+            <div class="admin-user-meta">
+              <strong>{{ user["email"] }}</strong>
+              <span class="muted">Role: {{ user["role"]|title }}</span>
+            </div>
+
+            <form method="post" class="inline-form">
+              <input type="hidden" name="action" value="update_role">
+              <input type="hidden" name="user_id" value="{{ user['id'] }}">
+              <label for="role-{{ user['id'] }}">Role</label>
+              <select id="role-{{ user['id'] }}" name="role">
+                {% for role in roles %}
+                  <option value="{{ role }}" {% if user["role"] == role %}selected{% endif %}>{{ role|title }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-small" type="submit">Update Role</button>
+            </form>
+
+            <div class="action-row">
+              <form method="post" class="inline-form">
+                <input type="hidden" name="action" value="send_reset">
+                <input type="hidden" name="user_id" value="{{ user['id'] }}">
+                <button class="btn btn-secondary btn-small" type="submit">Send Reset Email</button>
+              </form>
+
+              <form method="post" class="inline-form">
+                <input type="hidden" name="action" value="delete_user">
+                <input type="hidden" name="user_id" value="{{ user['id'] }}">
+                <button class="btn btn-danger btn-small" type="submit">Delete User</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>
