@@ -78,7 +78,7 @@ MAIL_PASSWORD = env_first("MAIL_PASSWORD", "SMTP_PASSWORD")
 MAIL_USE_TLS = env_first("MAIL_USE_TLS").lower() in {"1", "true", "yes"} or SMTP_SECURE == "tls"
 MAIL_USE_SSL = env_first("MAIL_USE_SSL").lower() in {"1", "true", "yes"} or SMTP_SECURE in {"ssl", "smtps"}
 MAIL_FROM = env_first("MAIL_FROM", "MAIL_FROM_ADDRESS", default=MAIL_USERNAME or "no-reply@schwinn.local")
-PASSWORD_RESET_SALT = "password-reset"
+PASSWORD_RESET_SALT = env_first("PASSWORD_RESET_SALT", default="schwinn-password-reset-salt")
 PASSWORD_RESET_MAX_AGE_SECONDS = int(os.getenv("PASSWORD_RESET_MAX_AGE_SECONDS", "3600"))
 USER_SESSION_KEY = "user_id"
 PUBLIC_ENDPOINTS = {
@@ -803,7 +803,7 @@ def forgot_password():
             try:
                 send_password_reset_email(email, reset_link)
             except Exception:
-                app.logger.exception("Password reset email failed for %s", email)
+                app.logger.warning("Password reset email failed for %s", email)
                 message = "We couldn't send the password reset email right now. Please try again."
                 return render_template("forgot_password.html", message=message, email=email)
         message = "If that email is registered, a password reset link has been sent."
@@ -936,7 +936,7 @@ def admin_users():
                     send_password_reset_email(target_email, reset_link)
                     message = f"Created {target_email} and sent a password setup email."
                 except Exception:
-                    app.logger.exception("Admin-triggered welcome reset email failed for %s", target_email)
+                    app.logger.warning("Admin-triggered welcome reset email failed for %s", target_email)
                     message = f"Created {target_email}, but the password setup email could not be sent."
         elif action == "delete_user" and target_user is not None:
             if str(target_user["role"]) == ADMIN_ROLE and admin_count() == 1:
@@ -962,7 +962,7 @@ def admin_users():
                 send_password_reset_email(str(target_user["email"]), reset_link)
                 message = f"Sent a password reset email to {target_user['email']}."
             except Exception:
-                app.logger.exception("Admin-triggered password reset email failed for %s", target_user["email"])
+                app.logger.warning("Admin-triggered password reset email failed for %s", target_user["email"])
                 message = f"Could not send a password reset email to {target_user['email']}."
         else:
             message = "The requested admin action could not be completed."
@@ -1128,7 +1128,7 @@ def upload_workout():
             app.logger.warning("Workout import attempted without DAT file available")
         except Exception:
             message = DAT_IMPORT_ERROR_MESSAGE
-            app.logger.exception("DAT parse/import failed")
+            app.logger.warning("DAT parse/import failed")
 
     historical_data = load_history_file(HISTORY_FILE)
     return render_template("upload_workout.html", message=message, **build_page_context(historical_data))
@@ -1160,7 +1160,7 @@ def upload_history():
                 )
         except Exception:
             message = HISTORY_IMPORT_ERROR_MESSAGE
-            app.logger.exception("History CSV import failed")
+            app.logger.warning("History CSV import failed")
 
     historical_data = load_history_file(HISTORY_FILE)
     return render_template("upload_history.html", message=message, **build_page_context(historical_data))

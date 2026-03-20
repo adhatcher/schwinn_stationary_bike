@@ -542,3 +542,11 @@ Traceback (most recent call last):
   File "/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/tests/test_app.py", line 905, in <genexpr>
     monkeypatch.setattr(app, "send_password_reset_email", lambda _email, _link: (_ for _ in ()).throw(RuntimeError("smtp down")))
 RuntimeError: smtp down
+2026-03-20 19:07:13 WARNING [app.app] DAT parse/import failed
+2026-03-20 19:07:13 WARNING [app.app] History CSV import failed
+2026-03-20 19:07:14 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-20 19:07:14 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-20 19:07:14 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-37/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-20 19:07:14 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-20 19:07:14 WARNING [app.app] DAT parse/import failed
+2026-03-20 19:07:17 WARNING [app.app] Password reset email failed for athlete@example.com
