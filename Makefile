@@ -1,4 +1,4 @@
-POETRY ?= /opt/homebrew/bin/poetry
+POETRY ?= poetry
 IMAGE ?= schwinn-dashboard:latest
 PLATFORM ?= linux/amd64
 PORT ?= 8080
