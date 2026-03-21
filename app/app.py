@@ -15,8 +15,6 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
 from typing import Iterable
-from urllib.parse import urlsplit
-
 import pandas as pd
 import plotly.graph_objects as go
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
@@ -260,7 +258,14 @@ def email_audit_id(value: str) -> str:
     normalized = normalize_email(value)
     if not normalized:
         return ""
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+    audit_salt = f"{app.secret_key}:{PASSWORD_RESET_SALT}".encode("utf-8")
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        normalized.encode("utf-8"),
+        audit_salt,
+        600_000,
+    )
+    return digest.hex()[:12]
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:
@@ -400,15 +405,6 @@ def logout_current_user() -> None:
 
 def password_is_valid(password: str) -> bool:
     return len(password) >= 8
-
-
-def is_safe_redirect_target(target: str) -> bool:
-    if not target:
-        return False
-    if any(character in target for character in ("\r", "\n", "\\", "\x00")):
-        return False
-    parsed = urlsplit(target)
-    return not parsed.scheme and not parsed.netloc and parsed.path.startswith("/")
 
 
 def generate_temporary_password() -> str:
@@ -796,7 +792,6 @@ def login():
         return redirect(url_for("welcome"))
 
     message = request.args.get("message", "")
-    next_url = request.values.get("next", "") or request.args.get("next", "")
     email = normalize_email(request.values.get("email", "") or request.args.get("email", ""))
 
     if request.method == "POST":
@@ -806,8 +801,6 @@ def login():
         if user and check_password_hash(str(user["password_hash"]), password):
             login_user(user)
             audit_auth_event("login", email, "success", details="user signed in")
-            if is_safe_redirect_target(next_url):
-                return redirect(next_url)
             return redirect(url_for("welcome"))
         audit_auth_event("login", email, "failure", details="invalid email or password")
         message = "We couldn't sign you in with that email and password."
@@ -815,7 +808,6 @@ def login():
     return render_template(
         "login.html",
         message=message,
-        next_url=next_url,
         email=email,
         registration_enabled=is_registration_enabled(),
     )
