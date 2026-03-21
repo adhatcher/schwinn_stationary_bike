@@ -177,15 +177,15 @@ configure_logging()
 
 def audit_auth_event(action: str, email: str, result: str, *, actor_email: str = "", details: str = "") -> None:
     AUTH_EVENT_COUNT.labels(action, result).inc()
-    normalized_email = normalize_email(email)
-    actor = normalize_email(actor_email)
+    masked_email = mask_email(email)
+    masked_actor = mask_email(actor_email)
     log_method = app.logger.info if result == "success" else app.logger.warning
     log_method(
         "auth_event action=%s result=%s email=%s actor_email=%s details=%s",
         action,
         result,
-        normalized_email,
-        actor,
+        masked_email,
+        masked_actor,
         details,
     )
 
@@ -236,6 +236,22 @@ def init_auth_db() -> None:
 
 def normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def mask_email(email: str) -> str:
+    normalized = normalize_email(email)
+    if not normalized or "@" not in normalized:
+        return ""
+    local_part, domain = normalized.split("@", 1)
+    if not local_part:
+        return f"***@{domain}"
+    if len(local_part) == 1:
+        masked_local = "*"
+    elif len(local_part) == 2:
+        masked_local = f"{local_part[0]}*"
+    else:
+        masked_local = f"{local_part[0]}***{local_part[-1]}"
+    return f"{masked_local}@{domain}"
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:
@@ -400,7 +416,10 @@ def send_password_reset_email(email: str, reset_link: str) -> None:
     )
 
     if not MAIL_SERVER:
-        app.logger.info("Password reset email (MAIL_SERVER not configured): to=%s link=%s", email, reset_link)
+        app.logger.info(
+            "Password reset email not sent because MAIL_SERVER is not configured: email=%s",
+            mask_email(email),
+        )
         return
 
     if MAIL_USE_SSL:
