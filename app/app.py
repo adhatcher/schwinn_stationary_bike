@@ -97,6 +97,10 @@ ADMIN_ROLE = "admin"
 USER_ROLE = "user"
 VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
 
+
+class PasswordResetTokenError(RuntimeError):
+    pass
+
 COLUMN_NAMES = [
     "Workout_Date",
     "Distance",
@@ -335,24 +339,29 @@ def get_setting(key: str, default: str = "") -> str:
     return str(row["value"])
 
 
-def set_setting(key: str, value: str) -> None:
-    with get_db_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO settings (key, value) VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (key, value),
-        )
-        connection.commit()
+def set_setting(key: str, value: str) -> bool:
+    try:
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+            connection.commit()
+    except sqlite3.Error:
+        app.logger.warning("Settings update failed: key=%s", key)
+        return False
+    return True
 
 
 def is_registration_enabled() -> bool:
     return get_setting("registration_enabled", "false").lower() == "true"
 
 
-def set_registration_enabled(enabled: bool) -> None:
-    set_setting("registration_enabled", "true" if enabled else "false")
+def set_registration_enabled(enabled: bool) -> bool:
+    return set_setting("registration_enabled", "true" if enabled else "false")
 
 
 def admin_count() -> int:
@@ -370,7 +379,10 @@ def password_reset_serializer() -> URLSafeTimedSerializer:
 
 
 def generate_password_reset_token(email: str) -> str:
-    return password_reset_serializer().dumps(normalize_email(email), salt=PASSWORD_RESET_SALT)
+    try:
+        return password_reset_serializer().dumps(normalize_email(email), salt=PASSWORD_RESET_SALT)
+    except Exception as exc:
+        raise PasswordResetTokenError("Unable to generate password reset token.") from exc
 
 
 def verify_password_reset_token(token: str, *, max_age: int | None = None) -> sqlite3.Row | None:
@@ -380,7 +392,7 @@ def verify_password_reset_token(token: str, *, max_age: int | None = None) -> sq
             salt=PASSWORD_RESET_SALT,
             max_age=max_age or PASSWORD_RESET_MAX_AGE_SECONDS,
         )
-    except (BadSignature, SignatureExpired):
+    except (BadSignature, SignatureExpired, Exception):
         return None
     return get_user_by_email(str(email))
 
@@ -856,9 +868,9 @@ def forgot_password():
         email = normalize_email(request.form.get("email", ""))
         user = get_user_by_email(email)
         if user is not None:
-            token = generate_password_reset_token(email)
-            reset_link = build_reset_link(token)
             try:
+                token = generate_password_reset_token(email)
+                reset_link = build_reset_link(token)
                 send_password_reset_email(email, reset_link)
                 audit_auth_event("password_reset_email", email, "success", details="forgot password email sent")
             except Exception:
@@ -951,7 +963,10 @@ def setup_admin():
             message = "Passwords did not match. Please try again."
         else:
             user = create_user(email, password, role=ADMIN_ROLE)
-            set_registration_enabled(False)
+            if not set_registration_enabled(False):
+                delete_user(int(user["id"]))
+                message = "We couldn't finish admin setup right now. Please try again."
+                return render_template("setup_admin.html", message=message, email=email)
             login_user(user)
             audit_auth_event("admin_bootstrap", email, "success", details="initial admin account created")
             return redirect(url_for("admin_dashboard", message="Admin account created."))
@@ -974,8 +989,10 @@ def admin_dashboard():
     message = request.args.get("message", "")
     if request.method == "POST":
         enabled = request.form.get("registration_enabled") == "true"
-        set_registration_enabled(enabled)
-        message = "Registration settings updated."
+        if set_registration_enabled(enabled):
+            message = "Registration settings updated."
+        else:
+            message = "We couldn't update registration settings right now."
 
     return render_template("admin.html", message=message)
 
@@ -1014,8 +1031,8 @@ def admin_users():
                 temporary_password = generate_temporary_password()
                 create_user(target_email, temporary_password, role=target_role)
                 audit_auth_event("user_create", target_email, "success", actor_email=actor_email, details=f"user created role={target_role}")
-                reset_link = build_reset_link(generate_password_reset_token(target_email))
                 try:
+                    reset_link = build_reset_link(generate_password_reset_token(target_email))
                     send_password_reset_email(target_email, reset_link)
                     audit_auth_event(
                         "password_reset_email",
@@ -1088,8 +1105,8 @@ def admin_users():
                 )
                 message = f"Updated {target_user['email']} to {target_role}."
         elif action == "send_reset" and target_user is not None:
-            reset_link = build_reset_link(generate_password_reset_token(str(target_user["email"])))
             try:
+                reset_link = build_reset_link(generate_password_reset_token(str(target_user["email"])))
                 send_password_reset_email(str(target_user["email"]), reset_link)
                 audit_auth_event(
                     "password_reset_email",

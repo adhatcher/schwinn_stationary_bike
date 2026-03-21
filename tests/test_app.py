@@ -718,6 +718,25 @@ def test_forgot_password_sends_reset_email(monkeypatch, tmp_path) -> None:
     assert "/reset-password/" in sent["reset_link"]
 
 
+def test_forgot_password_handles_token_generation_failure(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    _create_user()
+    monkeypatch.setattr(
+        app,
+        "generate_password_reset_token",
+        lambda _email: (_ for _ in ()).throw(app.PasswordResetTokenError("bad token setup")),
+    )
+    client = app.app.test_client()
+
+    response = client.post("/forgot-password", data={"email": "athlete@example.com"})
+
+    text = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "couldn&#39;t send the password reset email right now" in text
+    assert "bad token setup" not in text
+
+
 def test_auth_metrics_track_login_and_reset_events(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     admin = _create_admin()
@@ -837,6 +856,20 @@ def test_invalid_reset_token_shows_error(monkeypatch, tmp_path) -> None:
     response = client.get("/reset-password/bad-token")
     assert response.status_code == 200
     assert "invalid or has expired" in response.get_data(as_text=True)
+
+
+def test_admin_dashboard_handles_registration_setting_failure(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin = _create_admin()
+    monkeypatch.setattr(app, "set_registration_enabled", lambda _enabled: False)
+    client = app.app.test_client()
+    _log_in(client, admin)
+
+    response = client.post("/admin", data={"registration_enabled": "true"})
+
+    text = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "couldn&#39;t update registration settings right now" in text
 
 
 def test_load_dotenv_file_loads_quoted_values_and_skips_existing(monkeypatch, tmp_path) -> None:
