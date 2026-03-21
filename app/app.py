@@ -835,6 +835,7 @@ def reset_password(token: str):
             message = "Passwords did not match. Please try again."
         else:
             update_user_password(int(user["id"]), password)
+            logout_current_user()
             return redirect(url_for("login", message="Your password has been reset. You can sign in now."))
 
     return render_template(

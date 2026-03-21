@@ -653,6 +653,49 @@ def test_reset_password_updates_stored_password(monkeypatch, tmp_path) -> None:
     assert app.check_password_hash(str(updated["password_hash"]), "newpassword123")
 
 
+def test_admin_created_user_can_reset_password_and_log_in(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin = _create_admin()
+    sent = {}
+
+    def fake_send(email: str, reset_link: str) -> None:
+        sent["email"] = email
+        sent["reset_link"] = reset_link
+
+    monkeypatch.setattr(app, "send_password_reset_email", fake_send)
+    client = app.app.test_client()
+    _log_in(client, admin)
+
+    create_response = client.post(
+        "/admin/users",
+        data={"action": "create_user", "email": "newuser@example.com", "role": "user"},
+    )
+
+    assert create_response.status_code == 200
+    assert sent["email"] == "newuser@example.com"
+    token = str(sent["reset_link"]).rsplit("/reset-password/", 1)[1]
+
+    reset_response = client.post(
+        f"/reset-password/{token}",
+        data={"password": "newpassword123", "confirm_password": "newpassword123"},
+        follow_redirects=False,
+    )
+
+    assert reset_response.status_code == 302
+    assert "/login" in reset_response.headers["Location"]
+    with client.session_transaction() as flask_session:
+        assert app.USER_SESSION_KEY not in flask_session
+
+    login_response = client.post(
+        "/login",
+        data={"email": "newuser@example.com", "password": "newpassword123"},
+        follow_redirects=False,
+    )
+
+    assert login_response.status_code == 302
+    assert login_response.headers["Location"].endswith("/")
+
+
 def test_invalid_reset_token_shows_error(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     _create_admin()
