@@ -1021,6 +1021,34 @@ def test_login_ignores_unsafe_next_url(monkeypatch, tmp_path) -> None:
     assert response.headers["Location"].endswith("/")
 
 
+def test_login_ignores_unsafe_next_url_with_protocol_relative_target(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    _create_user()
+    client = app.app.test_client()
+    response = client.post(
+        "/login",
+        data={"email": "athlete@example.com", "password": "password123", "next": "//evil.example"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
+def test_login_ignores_unsafe_next_url_with_backslash(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    _create_user()
+    client = app.app.test_client()
+    response = client.post(
+        "/login",
+        data={"email": "athlete@example.com", "password": "password123", "next": "/\\evil"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
 def test_register_redirects_authenticated_user(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     client = app.app.test_client()

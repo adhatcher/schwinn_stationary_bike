@@ -14,6 +14,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
 from typing import Iterable
+from urllib.parse import urlsplit
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -391,6 +392,15 @@ def logout_current_user() -> None:
 
 def password_is_valid(password: str) -> bool:
     return len(password) >= 8
+
+
+def is_safe_redirect_target(target: str) -> bool:
+    if not target:
+        return False
+    if any(character in target for character in ("\r", "\n", "\\", "\x00")):
+        return False
+    parsed = urlsplit(target)
+    return not parsed.scheme and not parsed.netloc and parsed.path.startswith("/")
 
 
 def generate_temporary_password() -> str:
@@ -788,7 +798,7 @@ def login():
         if user and check_password_hash(str(user["password_hash"]), password):
             login_user(user)
             audit_auth_event("login", email, "success", details="user signed in")
-            if next_url.startswith("/") and not next_url.startswith("//"):
+            if is_safe_redirect_target(next_url):
                 return redirect(next_url)
             return redirect(url_for("welcome"))
         audit_auth_event("login", email, "failure", details="invalid email or password")
