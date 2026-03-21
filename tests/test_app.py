@@ -615,6 +615,73 @@ def test_login_accepts_registered_user(monkeypatch, tmp_path) -> None:
     assert response.headers["Location"].endswith("/")
 
 
+def test_auth_events_log_successes_and_failures(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin = _create_admin()
+    _create_user()
+    logged: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        app.app.logger,
+        "info",
+        lambda message, *args: logged.append(("info", message % args)),
+    )
+    monkeypatch.setattr(
+        app.app.logger,
+        "warning",
+        lambda message, *args: logged.append(("warning", message % args)),
+    )
+    client = app.app.test_client()
+
+    login_success = client.post(
+        "/login",
+        data={"email": "athlete@example.com", "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login_success.status_code == 302
+
+    client.get("/logout")
+
+    login_failure = client.post(
+        "/login",
+        data={"email": "athlete@example.com", "password": "wrong-password"},
+        follow_redirects=False,
+    )
+    assert login_failure.status_code == 200
+
+    with client.session_transaction() as flask_session:
+        flask_session[app.USER_SESSION_KEY] = int(admin["id"])
+
+    sent = {}
+
+    def fake_send(email: str, reset_link: str) -> None:
+        sent["email"] = email
+        sent["reset_link"] = reset_link
+
+    monkeypatch.setattr(app, "send_password_reset_email", fake_send)
+    create_response = client.post(
+        "/admin/users",
+        data={"action": "create_user", "email": "newuser@example.com", "role": "user"},
+    )
+    assert create_response.status_code == 200
+    token = str(sent["reset_link"]).rsplit("/reset-password/", 1)[1]
+
+    reset_response = client.post(
+        f"/reset-password/{token}",
+        data={"password": "newpassword123", "confirm_password": "newpassword123"},
+        follow_redirects=False,
+    )
+    assert reset_response.status_code == 302
+
+    entries = "\n".join(message for _level, message in logged)
+    assert "action=login result=success email=athlete@example.com" in entries
+    assert "action=login result=failure email=athlete@example.com" in entries
+    assert "action=logout result=success email=athlete@example.com" in entries
+    assert "action=user_create result=success email=newuser@example.com actor_email=admin@example.com" in entries
+    assert "action=password_reset_email result=success email=newuser@example.com actor_email=admin@example.com" in entries
+    assert "action=password_reset result=success email=newuser@example.com" in entries
+
+
 def test_forgot_password_sends_reset_email(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     _create_admin()
@@ -635,6 +702,44 @@ def test_forgot_password_sends_reset_email(monkeypatch, tmp_path) -> None:
     assert "/reset-password/" in sent["reset_link"]
 
 
+def test_auth_metrics_track_login_and_reset_events(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    admin = _create_admin()
+    _create_user()
+    sent = {}
+
+    def fake_send(email: str, reset_link: str) -> None:
+        sent["email"] = email
+        sent["reset_link"] = reset_link
+
+    monkeypatch.setattr(app, "send_password_reset_email", fake_send)
+    client = app.app.test_client()
+
+    client.post("/login", data={"email": "athlete@example.com", "password": "password123"})
+    client.get("/logout")
+    client.post("/login", data={"email": "athlete@example.com", "password": "wrong-password"})
+
+    with client.session_transaction() as flask_session:
+        flask_session[app.USER_SESSION_KEY] = int(admin["id"])
+
+    client.post("/admin/users", data={"action": "create_user", "email": "newuser@example.com", "role": "user"})
+    token = str(sent["reset_link"]).rsplit("/reset-password/", 1)[1]
+    client.post(
+        f"/reset-password/{token}",
+        data={"password": "newpassword123", "confirm_password": "newpassword123"},
+    )
+
+    metrics_response = client.get("/metrics")
+    metrics_text = metrics_response.get_data(as_text=True)
+
+    assert 'schwinn_auth_events_total{action="login",result="success"}' in metrics_text
+    assert 'schwinn_auth_events_total{action="login",result="failure"}' in metrics_text
+    assert 'schwinn_auth_events_total{action="logout",result="success"}' in metrics_text
+    assert 'schwinn_auth_events_total{action="user_create",result="success"}' in metrics_text
+    assert 'schwinn_auth_events_total{action="password_reset_email",result="success"}' in metrics_text
+    assert 'schwinn_auth_events_total{action="password_reset",result="success"}' in metrics_text
+
+
 def test_reset_password_updates_stored_password(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     _create_admin()
@@ -648,6 +753,7 @@ def test_reset_password_updates_stored_password(monkeypatch, tmp_path) -> None:
     )
     assert response.status_code == 302
     assert "/login" in response.headers["Location"]
+    assert "email=athlete@example.com" in response.headers["Location"]
     updated = app.get_user_by_email("athlete@example.com")
     assert updated is not None
     assert app.check_password_hash(str(updated["password_hash"]), "newpassword123")
@@ -694,6 +800,18 @@ def test_admin_created_user_can_reset_password_and_log_in(monkeypatch, tmp_path)
 
     assert login_response.status_code == 302
     assert login_response.headers["Location"].endswith("/")
+
+
+def test_login_prefills_email_from_query_string(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+    client = app.app.test_client()
+
+    response = client.get("/login?email=newuser@example.com")
+
+    text = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'value="newuser@example.com"' in text
 
 
 def test_invalid_reset_token_shows_error(monkeypatch, tmp_path) -> None:

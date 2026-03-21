@@ -134,6 +134,11 @@ FILE_IMPORT_LATENCY = Histogram(
     "Time spent importing DAT files",
     ["source"],
 )
+AUTH_EVENT_COUNT = Counter(
+    "schwinn_auth_events_total",
+    "Authentication and account management events",
+    ["action", "result"],
+)
 
 
 def configure_logging() -> None:
@@ -168,6 +173,21 @@ def configure_logging() -> None:
 
 
 configure_logging()
+
+
+def audit_auth_event(action: str, email: str, result: str, *, actor_email: str = "", details: str = "") -> None:
+    AUTH_EVENT_COUNT.labels(action, result).inc()
+    normalized_email = normalize_email(email)
+    actor = normalize_email(actor_email)
+    log_method = app.logger.info if result == "success" else app.logger.warning
+    log_method(
+        "auth_event action=%s result=%s email=%s actor_email=%s details=%s",
+        action,
+        result,
+        normalized_email,
+        actor,
+        details,
+    )
 
 
 @contextmanager
@@ -740,6 +760,7 @@ def login():
 
     message = request.args.get("message", "")
     next_url = request.values.get("next", "") or request.args.get("next", "")
+    email = normalize_email(request.values.get("email", "") or request.args.get("email", ""))
 
     if request.method == "POST":
         email = normalize_email(request.form.get("email", ""))
@@ -747,12 +768,20 @@ def login():
         user = get_user_by_email(email)
         if user and check_password_hash(str(user["password_hash"]), password):
             login_user(user)
+            audit_auth_event("login", email, "success", details="user signed in")
             if next_url.startswith("/") and not next_url.startswith("//"):
                 return redirect(next_url)
             return redirect(url_for("welcome"))
+        audit_auth_event("login", email, "failure", details="invalid email or password")
         message = "We couldn't sign you in with that email and password."
 
-    return render_template("login.html", message=message, next_url=next_url)
+    return render_template(
+        "login.html",
+        message=message,
+        next_url=next_url,
+        email=email,
+        registration_enabled=is_registration_enabled(),
+    )
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -802,10 +831,13 @@ def forgot_password():
             reset_link = build_reset_link(token)
             try:
                 send_password_reset_email(email, reset_link)
+                audit_auth_event("password_reset_email", email, "success", details="forgot password email sent")
             except Exception:
-                app.logger.warning("Password reset email failed for %s", email)
+                audit_auth_event("password_reset_email", email, "failure", details="forgot password email send failed")
                 message = "We couldn't send the password reset email right now. Please try again."
                 return render_template("forgot_password.html", message=message, email=email)
+        else:
+            audit_auth_event("password_reset_email", email, "failure", details="forgot password requested for unknown email")
         message = "If that email is registered, a password reset link has been sent."
         return render_template("forgot_password.html", message=message, email="")
 
@@ -818,6 +850,7 @@ def reset_password(token: str):
         return redirect(url_for("setup_admin"))
     user = verify_password_reset_token(token)
     if user is None:
+        audit_auth_event("password_reset", "", "failure", details="invalid or expired reset token")
         return render_template(
             "reset_password.html",
             message="That password reset link is invalid or has expired.",
@@ -830,13 +863,22 @@ def reset_password(token: str):
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
         if not password_is_valid(password):
+            audit_auth_event("password_reset", str(user["email"]), "failure", details="password too short")
             message = "Choose a password with at least 8 characters."
         elif password != confirm_password:
+            audit_auth_event("password_reset", str(user["email"]), "failure", details="password confirmation mismatch")
             message = "Passwords did not match. Please try again."
         else:
             update_user_password(int(user["id"]), password)
             logout_current_user()
-            return redirect(url_for("login", message="Your password has been reset. You can sign in now."))
+            audit_auth_event("password_reset", str(user["email"]), "success", details="password updated")
+            return redirect(
+                url_for(
+                    "login",
+                    message="Your password has been reset. You can sign in now.",
+                    email=str(user["email"]),
+                )
+            )
 
     return render_template(
         "reset_password.html",
@@ -849,7 +891,10 @@ def reset_password(token: str):
 
 @app.route("/logout", methods=["GET"])
 def logout():
+    user = current_user()
     logout_current_user()
+    if user is not None:
+        audit_auth_event("logout", str(user["email"]), "success", details="user signed out")
     return redirect(url_for("setup_admin" if not admin_exists() else "login", message="You have been signed out."))
 
 
@@ -879,6 +924,7 @@ def setup_admin():
             user = create_user(email, password, role=ADMIN_ROLE)
             set_registration_enabled(False)
             login_user(user)
+            audit_auth_event("admin_bootstrap", email, "success", details="initial admin account created")
             return redirect(url_for("admin_dashboard", message="Admin account created."))
 
     return render_template("setup_admin.html", message=message, email=email)
@@ -919,53 +965,122 @@ def admin_users():
         target_id_raw = request.form.get("user_id", "")
         target_id = int(target_id_raw) if target_id_raw.isdigit() else None
         target_user = get_user_by_id(target_id)
+        actor = current_user()
+        actor_email = str(actor["email"]) if actor is not None else ""
 
         if action == "create_user":
             if not target_email:
+                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="missing email")
                 message = "Enter an email address for the new user."
             elif "@" not in target_email:
+                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="invalid email")
                 message = "Enter a valid email address."
             elif target_role not in VALID_ROLES:
+                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="invalid role")
                 message = "Choose a valid user role."
             elif get_user_by_email(target_email) is not None:
+                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="email already exists")
                 message = "That email address already belongs to an existing user."
             else:
                 temporary_password = generate_temporary_password()
                 create_user(target_email, temporary_password, role=target_role)
+                audit_auth_event("user_create", target_email, "success", actor_email=actor_email, details=f"user created role={target_role}")
                 reset_link = build_reset_link(generate_password_reset_token(target_email))
                 try:
                     send_password_reset_email(target_email, reset_link)
+                    audit_auth_event(
+                        "password_reset_email",
+                        target_email,
+                        "success",
+                        actor_email=actor_email,
+                        details="new user setup email sent",
+                    )
                     message = f"Created {target_email} and sent a password setup email."
                 except Exception:
-                    app.logger.warning("Admin-triggered welcome reset email failed for %s", target_email)
+                    audit_auth_event(
+                        "password_reset_email",
+                        target_email,
+                        "failure",
+                        actor_email=actor_email,
+                        details="new user setup email send failed",
+                    )
                     message = f"Created {target_email}, but the password setup email could not be sent."
         elif action == "delete_user" and target_user is not None:
             if str(target_user["role"]) == ADMIN_ROLE and admin_count() == 1:
+                audit_auth_event(
+                    "user_delete",
+                    str(target_user["email"]),
+                    "failure",
+                    actor_email=actor_email,
+                    details="cannot delete last admin",
+                )
                 message = "You cannot delete the last admin account."
             else:
                 delete_user(int(target_user["id"]))
+                audit_auth_event(
+                    "user_delete",
+                    str(target_user["email"]),
+                    "success",
+                    actor_email=actor_email,
+                    details="user deleted",
+                )
                 message = f"Deleted {target_user['email']}."
         elif action == "update_role" and target_user is not None:
             if target_role not in VALID_ROLES:
+                audit_auth_event(
+                    "user_role_update",
+                    str(target_user["email"]),
+                    "failure",
+                    actor_email=actor_email,
+                    details="invalid role",
+                )
                 message = "Choose a valid user role."
             elif (
                 str(target_user["role"]) == ADMIN_ROLE
                 and target_role != ADMIN_ROLE
                 and admin_count() == 1
             ):
+                audit_auth_event(
+                    "user_role_update",
+                    str(target_user["email"]),
+                    "failure",
+                    actor_email=actor_email,
+                    details="cannot demote last admin",
+                )
                 message = "You cannot demote the last admin account."
             else:
                 update_user_role(int(target_user["id"]), target_role)
+                audit_auth_event(
+                    "user_role_update",
+                    str(target_user["email"]),
+                    "success",
+                    actor_email=actor_email,
+                    details=f"role updated to {target_role}",
+                )
                 message = f"Updated {target_user['email']} to {target_role}."
         elif action == "send_reset" and target_user is not None:
             reset_link = build_reset_link(generate_password_reset_token(str(target_user["email"])))
             try:
                 send_password_reset_email(str(target_user["email"]), reset_link)
+                audit_auth_event(
+                    "password_reset_email",
+                    str(target_user["email"]),
+                    "success",
+                    actor_email=actor_email,
+                    details="admin-triggered reset email sent",
+                )
                 message = f"Sent a password reset email to {target_user['email']}."
             except Exception:
-                app.logger.warning("Admin-triggered password reset email failed for %s", target_user["email"])
+                audit_auth_event(
+                    "password_reset_email",
+                    str(target_user["email"]),
+                    "failure",
+                    actor_email=actor_email,
+                    details="admin-triggered reset email send failed",
+                )
                 message = f"Could not send a password reset email to {target_user['email']}."
         else:
+            audit_auth_event("admin_user_action", target_email, "failure", actor_email=actor_email, details="invalid admin action")
             message = "The requested admin action could not be completed."
 
     return render_template("admin_users.html", message=message, users=list_users(), roles=sorted(VALID_ROLES))

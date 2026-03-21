@@ -558,3 +558,68 @@ RuntimeError: smtp down
 2026-03-20 19:30:37 WARNING [app.app] Workout import attempted without DAT file available
 2026-03-20 19:30:37 WARNING [app.app] DAT parse/import failed
 2026-03-20 19:30:40 WARNING [app.app] Password reset email failed for athlete@example.com
+2026-03-20 20:30:40 WARNING [app.app] DAT parse/import failed
+2026-03-20 20:30:40 WARNING [app.app] History CSV import failed
+2026-03-20 20:30:41 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-20 20:30:41 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-20 20:30:41 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-41/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-20 20:30:41 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-20 20:30:41 WARNING [app.app] DAT parse/import failed
+2026-03-20 20:30:44 WARNING [app.app] Password reset email failed for athlete@example.com
+2026-03-20 20:30:59 WARNING [app.app] DAT parse/import failed
+2026-03-20 20:30:59 WARNING [app.app] History CSV import failed
+2026-03-20 20:30:59 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-20 20:31:00 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-20 20:31:00 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-43/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-20 20:31:00 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-20 20:31:00 WARNING [app.app] DAT parse/import failed
+2026-03-20 20:31:03 WARNING [app.app] Password reset email failed for athlete@example.com
+2026-03-20 20:36:23 INFO [app.app] auth_event action=login result=success email=athlete@example.com actor_email= details=user signed in
+2026-03-20 20:36:23 WARNING [app.app] DAT parse/import failed
+2026-03-20 20:36:23 WARNING [app.app] History CSV import failed
+2026-03-20 20:36:24 INFO [app.app] auth_event action=password_reset_email result=success email=athlete@example.com actor_email= details=forgot password email sent
+2026-03-20 20:36:24 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-20 20:36:24 INFO [app.app] auth_event action=login result=success email=athlete@example.com actor_email= details=user signed in
+2026-03-20 20:36:24 INFO [app.app] auth_event action=logout result=success email=athlete@example.com actor_email= details=user signed out
+2026-03-20 20:36:24 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-20 20:36:24 WARNING [app.app] auth_event action=login result=failure email=athlete@example.com actor_email= details=invalid email or password
+2026-03-20 20:36:25 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-45/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-20 20:36:25 INFO [app.app] auth_event action=user_create result=success email=newuser@example.com actor_email=admin@example.com details=user created role=user
+2026-03-20 20:36:25 INFO [app.app] auth_event action=password_reset_email result=success email=newuser@example.com actor_email=admin@example.com details=new user setup email sent
+2026-03-20 20:36:25 INFO [app.app] auth_event action=password_reset result=success email=newuser@example.com actor_email= details=password updated
+2026-03-20 20:36:25 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-20 20:36:25 WARNING [app.app] DAT parse/import failed
+2026-03-20 20:36:25 INFO [app.app] auth_event action=password_reset result=success email=athlete@example.com actor_email= details=password updated
+2026-03-20 20:36:25 INFO [app.app] auth_event action=user_create result=success email=newuser@example.com actor_email=admin@example.com details=user created role=user
+2026-03-20 20:36:25 INFO [app.app] auth_event action=password_reset_email result=success email=newuser@example.com actor_email=admin@example.com details=new user setup email sent
+2026-03-20 20:36:25 INFO [app.app] auth_event action=password_reset result=success email=newuser@example.com actor_email= details=password updated
+2026-03-20 20:36:25 INFO [app.app] auth_event action=login result=success email=newuser@example.com actor_email= details=user signed in
+2026-03-20 20:36:26 INFO [app.app] auth_event action=login result=success email=athlete@example.com actor_email= details=user signed in
+2026-03-20 20:36:27 INFO [app.app] auth_event action=password_reset_email result=success email=athlete@example.com actor_email= details=forgot password email sent
+2026-03-20 20:36:27 INFO [app.app] auth_event action=login result=success email=athlete@example.com actor_email= details=user signed in
+2026-03-20 20:36:27 INFO [app.app] auth_event action=logout result=success email=athlete@example.com actor_email= details=user signed out
+2026-03-20 20:36:27 WARNING [app.app] auth_event action=login result=failure email=athlete@example.com actor_email= details=invalid email or password
+2026-03-20 20:36:27 INFO [app.app] auth_event action=user_create result=success email=newuser@example.com actor_email=admin@example.com details=user created role=user
+2026-03-20 20:36:27 INFO [app.app] auth_event action=password_reset_email result=success email=newuser@example.com actor_email=admin@example.com details=new user setup email sent
+2026-03-20 20:36:27 INFO [app.app] auth_event action=password_reset result=success email=newuser@example.com actor_email= details=password updated
+2026-03-20 20:36:27 INFO [app.app] auth_event action=password_reset result=success email=athlete@example.com actor_email= details=password updated
+2026-03-20 20:36:28 INFO [app.app] auth_event action=user_create result=success email=newuser@example.com actor_email=admin@example.com details=user created role=user
+2026-03-20 20:36:28 INFO [app.app] auth_event action=password_reset_email result=success email=newuser@example.com actor_email=admin@example.com details=new user setup email sent
+2026-03-20 20:36:28 INFO [app.app] auth_event action=password_reset result=success email=newuser@example.com actor_email= details=password updated
+2026-03-20 20:36:28 INFO [app.app] auth_event action=login result=success email=newuser@example.com actor_email= details=user signed in
+2026-03-20 20:36:28 WARNING [app.app] auth_event action=password_reset result=failure email= actor_email= details=invalid or expired reset token
+2026-03-20 20:36:28 INFO [app.app] auth_event action=logout result=success email=admin@example.com actor_email= details=user signed out
+2026-03-20 20:36:29 WARNING [app.app] auth_event action=login result=failure email=athlete@example.com actor_email= details=invalid email or password
+2026-03-20 20:36:29 INFO [app.app] auth_event action=login result=success email=athlete@example.com actor_email= details=user signed in
+2026-03-20 20:36:29 INFO [app.app] auth_event action=login result=success email=athlete@example.com actor_email= details=user signed in
+2026-03-20 20:36:30 WARNING [app.app] auth_event action=password_reset_email result=failure email=athlete@example.com actor_email= details=forgot password email send failed
+2026-03-20 20:36:30 WARNING [app.app] auth_event action=password_reset result=failure email=athlete@example.com actor_email= details=password too short
+2026-03-20 20:36:30 WARNING [app.app] auth_event action=password_reset result=failure email=athlete@example.com actor_email= details=password confirmation mismatch
+2026-03-20 20:36:31 INFO [app.app] auth_event action=admin_bootstrap result=success email=owner@example.com actor_email= details=initial admin account created
+2026-03-20 20:36:31 INFO [app.app] auth_event action=user_create result=success email=newuser@example.com actor_email=admin@example.com details=user created role=user
+2026-03-20 20:36:31 INFO [app.app] auth_event action=password_reset_email result=success email=newuser@example.com actor_email=admin@example.com details=new user setup email sent
+2026-03-20 20:36:31 INFO [app.app] auth_event action=user_role_update result=success email=member@example.com actor_email=admin@example.com details=role updated to admin
+2026-03-20 20:36:32 INFO [app.app] auth_event action=user_delete result=success email=member@example.com actor_email=admin@example.com details=user deleted
+2026-03-20 20:36:32 WARNING [app.app] auth_event action=user_delete result=failure email=admin@example.com actor_email=admin@example.com details=cannot delete last admin
+2026-03-20 20:36:32 WARNING [app.app] auth_event action=user_role_update result=failure email=admin@example.com actor_email=admin@example.com details=cannot demote last admin
+2026-03-20 20:36:32 INFO [app.app] auth_event action=password_reset_email result=success email=member@example.com actor_email=admin@example.com details=admin-triggered reset email sent
