@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -178,15 +179,15 @@ configure_logging()
 
 def audit_auth_event(action: str, email: str, result: str, *, actor_email: str = "", details: str = "") -> None:
     AUTH_EVENT_COUNT.labels(action, result).inc()
-    masked_email = mask_email(email)
-    masked_actor = mask_email(actor_email)
+    subject_id = email_audit_id(email)
+    actor_id = email_audit_id(actor_email)
     log_method = app.logger.info if result == "success" else app.logger.warning
     log_method(
-        "auth_event action=%s result=%s email=%s actor_email=%s details=%s",
+        "auth_event action=%s result=%s subject_id=%s actor_id=%s details=%s",
         action,
         result,
-        masked_email,
-        masked_actor,
+        subject_id,
+        actor_id,
         details,
     )
 
@@ -253,6 +254,13 @@ def mask_email(email: str) -> str:
     else:
         masked_local = f"{local_part[0]}***{local_part[-1]}"
     return f"{masked_local}@{domain}"
+
+
+def email_audit_id(value: str) -> str:
+    normalized = normalize_email(value)
+    if not normalized:
+        return ""
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:
@@ -427,8 +435,8 @@ def send_password_reset_email(email: str, reset_link: str) -> None:
 
     if not MAIL_SERVER:
         app.logger.info(
-            "Password reset email not sent because MAIL_SERVER is not configured: email=%s",
-            mask_email(email),
+            "Password reset email not sent because MAIL_SERVER is not configured: recipient_id=%s",
+            email_audit_id(email),
         )
         return
 

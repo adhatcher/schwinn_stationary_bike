@@ -737,3 +737,79 @@ RuntimeError: smtp down
 2026-03-20 20:54:46 WARNING [app.app] auth_event action=user_delete result=failure email=a***n@example.com actor_email=a***n@example.com details=cannot delete last admin
 2026-03-20 20:54:46 WARNING [app.app] auth_event action=user_role_update result=failure email=a***n@example.com actor_email=a***n@example.com details=cannot demote last admin
 2026-03-20 20:54:47 INFO [app.app] auth_event action=password_reset_email result=success email=m***r@example.com actor_email=a***n@example.com details=admin-triggered reset email sent
+2026-03-20 21:01:51 WARNING [app.app] DAT parse/import failed
+2026-03-20 21:01:51 WARNING [app.app] History CSV import failed
+2026-03-20 21:01:52 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-20 21:01:52 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-20 21:01:52 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-53/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-20 21:01:52 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-20 21:01:52 WARNING [app.app] DAT parse/import failed
+2026-03-20 21:01:53 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:01:54 INFO [app.app] auth_event action=password_reset_email result=success subject_id=ba66dbbcae40 actor_id= details=forgot password email sent
+2026-03-20 21:01:54 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:01:54 INFO [app.app] auth_event action=logout result=success subject_id=ba66dbbcae40 actor_id= details=user signed out
+2026-03-20 21:01:54 WARNING [app.app] auth_event action=login result=failure subject_id=ba66dbbcae40 actor_id= details=invalid email or password
+2026-03-20 21:01:54 INFO [app.app] auth_event action=user_create result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=user created role=user
+2026-03-20 21:01:54 INFO [app.app] auth_event action=password_reset_email result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=new user setup email sent
+2026-03-20 21:01:54 INFO [app.app] auth_event action=password_reset result=success subject_id=f338a2c83bfd actor_id= details=password updated
+2026-03-20 21:01:55 INFO [app.app] auth_event action=password_reset result=success subject_id=ba66dbbcae40 actor_id= details=password updated
+2026-03-20 21:01:55 INFO [app.app] auth_event action=user_create result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=user created role=user
+2026-03-20 21:01:55 INFO [app.app] auth_event action=password_reset_email result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=new user setup email sent
+2026-03-20 21:01:55 INFO [app.app] auth_event action=password_reset result=success subject_id=f338a2c83bfd actor_id= details=password updated
+2026-03-20 21:01:55 INFO [app.app] auth_event action=login result=success subject_id=f338a2c83bfd actor_id= details=user signed in
+2026-03-20 21:01:55 WARNING [app.app] auth_event action=password_reset result=failure subject_id= actor_id= details=invalid or expired reset token
+2026-03-20 21:01:55 INFO [app.app] auth_event action=logout result=success subject_id=258d8dc916db actor_id= details=user signed out
+2026-03-20 21:01:56 WARNING [app.app] auth_event action=login result=failure subject_id=ba66dbbcae40 actor_id= details=invalid email or password
+2026-03-20 21:01:56 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:01:56 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:01:56 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:01:57 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:01:57 WARNING [app.app] auth_event action=password_reset_email result=failure subject_id=ba66dbbcae40 actor_id= details=forgot password email send failed
+2026-03-20 21:01:58 WARNING [app.app] auth_event action=password_reset result=failure subject_id=ba66dbbcae40 actor_id= details=password too short
+2026-03-20 21:01:58 WARNING [app.app] auth_event action=password_reset result=failure subject_id=ba66dbbcae40 actor_id= details=password confirmation mismatch
+2026-03-20 21:01:58 INFO [app.app] auth_event action=admin_bootstrap result=success subject_id=c8cd3c642730 actor_id= details=initial admin account created
+2026-03-20 21:01:59 INFO [app.app] auth_event action=user_create result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=user created role=user
+2026-03-20 21:01:59 INFO [app.app] auth_event action=password_reset_email result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=new user setup email sent
+2026-03-20 21:01:59 INFO [app.app] auth_event action=user_role_update result=success subject_id=b6e346dee08f actor_id=258d8dc916db details=role updated to admin
+2026-03-20 21:01:59 INFO [app.app] auth_event action=user_delete result=success subject_id=b6e346dee08f actor_id=258d8dc916db details=user deleted
+2026-03-20 21:01:59 WARNING [app.app] auth_event action=user_delete result=failure subject_id=258d8dc916db actor_id=258d8dc916db details=cannot delete last admin
+2026-03-20 21:01:59 WARNING [app.app] auth_event action=user_role_update result=failure subject_id=258d8dc916db actor_id=258d8dc916db details=cannot demote last admin
+2026-03-20 21:01:59 INFO [app.app] auth_event action=password_reset_email result=success subject_id=b6e346dee08f actor_id=258d8dc916db details=admin-triggered reset email sent
+2026-03-20 21:02:06 WARNING [app.app] DAT parse/import failed
+2026-03-20 21:02:06 WARNING [app.app] History CSV import failed
+2026-03-20 21:02:07 INFO [app.app] History CSV merged: file=history.csv rows=1
+2026-03-20 21:02:07 INFO [app.app] DAT upload merged: file=AARON.DAT rows=1
+2026-03-20 21:02:07 INFO [app.app] Disk import merged: file=/private/var/folders/r_/mj3pvhn96znb5382k81kq7v00000gn/T/pytest-of-aaron/pytest-54/test_upload_workout_post_uses_0/AARON.DAT rows=1
+2026-03-20 21:02:07 WARNING [app.app] Workout import attempted without DAT file available
+2026-03-20 21:02:07 WARNING [app.app] DAT parse/import failed
+2026-03-20 21:02:08 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:02:09 INFO [app.app] auth_event action=password_reset_email result=success subject_id=ba66dbbcae40 actor_id= details=forgot password email sent
+2026-03-20 21:02:09 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:02:09 INFO [app.app] auth_event action=logout result=success subject_id=ba66dbbcae40 actor_id= details=user signed out
+2026-03-20 21:02:09 WARNING [app.app] auth_event action=login result=failure subject_id=ba66dbbcae40 actor_id= details=invalid email or password
+2026-03-20 21:02:09 INFO [app.app] auth_event action=user_create result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=user created role=user
+2026-03-20 21:02:09 INFO [app.app] auth_event action=password_reset_email result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=new user setup email sent
+2026-03-20 21:02:09 INFO [app.app] auth_event action=password_reset result=success subject_id=f338a2c83bfd actor_id= details=password updated
+2026-03-20 21:02:09 INFO [app.app] auth_event action=password_reset result=success subject_id=ba66dbbcae40 actor_id= details=password updated
+2026-03-20 21:02:10 INFO [app.app] auth_event action=user_create result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=user created role=user
+2026-03-20 21:02:10 INFO [app.app] auth_event action=password_reset_email result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=new user setup email sent
+2026-03-20 21:02:10 INFO [app.app] auth_event action=password_reset result=success subject_id=f338a2c83bfd actor_id= details=password updated
+2026-03-20 21:02:10 INFO [app.app] auth_event action=login result=success subject_id=f338a2c83bfd actor_id= details=user signed in
+2026-03-20 21:02:10 WARNING [app.app] auth_event action=password_reset result=failure subject_id= actor_id= details=invalid or expired reset token
+2026-03-20 21:02:10 INFO [app.app] auth_event action=logout result=success subject_id=258d8dc916db actor_id= details=user signed out
+2026-03-20 21:02:10 WARNING [app.app] auth_event action=login result=failure subject_id=ba66dbbcae40 actor_id= details=invalid email or password
+2026-03-20 21:02:11 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:02:11 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:02:11 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:02:11 INFO [app.app] auth_event action=login result=success subject_id=ba66dbbcae40 actor_id= details=user signed in
+2026-03-20 21:02:12 WARNING [app.app] auth_event action=password_reset_email result=failure subject_id=ba66dbbcae40 actor_id= details=forgot password email send failed
+2026-03-20 21:02:12 WARNING [app.app] auth_event action=password_reset result=failure subject_id=ba66dbbcae40 actor_id= details=password too short
+2026-03-20 21:02:12 WARNING [app.app] auth_event action=password_reset result=failure subject_id=ba66dbbcae40 actor_id= details=password confirmation mismatch
+2026-03-20 21:02:13 INFO [app.app] auth_event action=admin_bootstrap result=success subject_id=c8cd3c642730 actor_id= details=initial admin account created
+2026-03-20 21:02:13 INFO [app.app] auth_event action=user_create result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=user created role=user
+2026-03-20 21:02:13 INFO [app.app] auth_event action=password_reset_email result=success subject_id=f338a2c83bfd actor_id=258d8dc916db details=new user setup email sent
+2026-03-20 21:02:14 INFO [app.app] auth_event action=user_role_update result=success subject_id=b6e346dee08f actor_id=258d8dc916db details=role updated to admin
+2026-03-20 21:02:14 INFO [app.app] auth_event action=user_delete result=success subject_id=b6e346dee08f actor_id=258d8dc916db details=user deleted
+2026-03-20 21:02:14 WARNING [app.app] auth_event action=user_delete result=failure subject_id=258d8dc916db actor_id=258d8dc916db details=cannot delete last admin
+2026-03-20 21:02:14 WARNING [app.app] auth_event action=user_role_update result=failure subject_id=258d8dc916db actor_id=258d8dc916db details=cannot demote last admin
+2026-03-20 21:02:14 INFO [app.app] auth_event action=password_reset_email result=success subject_id=b6e346dee08f actor_id=258d8dc916db details=admin-triggered reset email sent

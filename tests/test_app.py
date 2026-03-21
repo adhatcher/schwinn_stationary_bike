@@ -674,12 +674,15 @@ def test_auth_events_log_successes_and_failures(monkeypatch, tmp_path) -> None:
     assert reset_response.status_code == 302
 
     entries = "\n".join(message for _level, message in logged)
-    assert "action=login result=success email=a***e@example.com" in entries
-    assert "action=login result=failure email=a***e@example.com" in entries
-    assert "action=logout result=success email=a***e@example.com" in entries
-    assert "action=user_create result=success email=n***r@example.com actor_email=a***n@example.com" in entries
-    assert "action=password_reset_email result=success email=n***r@example.com actor_email=a***n@example.com" in entries
-    assert "action=password_reset result=success email=n***r@example.com" in entries
+    athlete_id = app.email_audit_id("athlete@example.com")
+    admin_id = app.email_audit_id("admin@example.com")
+    new_user_id = app.email_audit_id("newuser@example.com")
+    assert f"action=login result=success subject_id={athlete_id}" in entries
+    assert f"action=login result=failure subject_id={athlete_id}" in entries
+    assert f"action=logout result=success subject_id={athlete_id}" in entries
+    assert f"action=user_create result=success subject_id={new_user_id} actor_id={admin_id}" in entries
+    assert f"action=password_reset_email result=success subject_id={new_user_id} actor_id={admin_id}" in entries
+    assert f"action=password_reset result=success subject_id={new_user_id}" in entries
 
 
 def test_mask_email_redacts_sensitive_values() -> None:
@@ -687,6 +690,12 @@ def test_mask_email_redacts_sensitive_values() -> None:
     assert app.mask_email("ab@example.com") == "a*@example.com"
     assert app.mask_email("a@example.com") == "*@example.com"
     assert app.mask_email("") == ""
+
+
+def test_email_audit_id_is_stable_and_non_empty() -> None:
+    assert app.email_audit_id("Athlete@example.com") == app.email_audit_id(" athlete@example.com ")
+    assert app.email_audit_id("athlete@example.com")
+    assert app.email_audit_id("") == ""
 
 
 def test_forgot_password_sends_reset_email(monkeypatch, tmp_path) -> None:
@@ -910,11 +919,11 @@ def test_send_password_reset_email_logs_when_mail_server_not_configured(monkeypa
     monkeypatch.setattr(
         app.app.logger,
         "info",
-        lambda message, email: logged.update({"message": message, "email": email}),
+        lambda message, recipient_id: logged.update({"message": message, "recipient_id": recipient_id}),
     )
     app.send_password_reset_email("athlete@example.com", "https://example.com/reset")
     assert "MAIL_SERVER is not configured" in logged["message"]
-    assert logged["email"] == "a***e@example.com"
+    assert logged["recipient_id"] == app.email_audit_id("athlete@example.com")
 
 
 def test_send_password_reset_email_uses_tls_and_login(monkeypatch) -> None:
