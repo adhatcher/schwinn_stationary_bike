@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import hmac
+import hashlib
 import json
 import logging
 import os
@@ -15,6 +15,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
 from typing import Iterable
+from urllib.parse import urlsplit
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -259,9 +260,7 @@ def email_audit_id(value: str) -> str:
     normalized = normalize_email(value)
     if not normalized:
         return ""
-    audit_key = f"{app.secret_key}:{PASSWORD_RESET_SALT}".encode("utf-8")
-    digest = hmac.new(audit_key, normalized.encode("utf-8"), "sha256").hexdigest()
-    return digest[:12]
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:
@@ -401,6 +400,15 @@ def logout_current_user() -> None:
 
 def password_is_valid(password: str) -> bool:
     return len(password) >= 8
+
+
+def is_safe_redirect_target(target: str) -> bool:
+    if not target:
+        return False
+    if any(character in target for character in ("\r", "\n", "\\", "\x00")):
+        return False
+    parsed = urlsplit(target)
+    return not parsed.scheme and not parsed.netloc and parsed.path.startswith("/")
 
 
 def generate_temporary_password() -> str:
@@ -758,7 +766,7 @@ def require_login():
         return None
     if request.path.startswith("/api/"):
         return jsonify(error="Authentication required."), 401
-    return redirect(url_for("login"))
+    return redirect(url_for("login", next=request.full_path[:-1] if request.full_path.endswith("?") else request.full_path))
 
 
 @app.after_request
@@ -788,6 +796,7 @@ def login():
         return redirect(url_for("welcome"))
 
     message = request.args.get("message", "")
+    next_url = request.values.get("next", "") or request.args.get("next", "")
     email = normalize_email(request.values.get("email", "") or request.args.get("email", ""))
 
     if request.method == "POST":
@@ -797,6 +806,8 @@ def login():
         if user and check_password_hash(str(user["password_hash"]), password):
             login_user(user)
             audit_auth_event("login", email, "success", details="user signed in")
+            if is_safe_redirect_target(next_url):
+                return redirect(next_url)
             return redirect(url_for("welcome"))
         audit_auth_event("login", email, "failure", details="invalid email or password")
         message = "We couldn't sign you in with that email and password."
@@ -804,6 +815,7 @@ def login():
     return render_template(
         "login.html",
         message=message,
+        next_url=next_url,
         email=email,
         registration_enabled=is_registration_enabled(),
     )
