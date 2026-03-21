@@ -1002,21 +1002,21 @@ def test_login_rejects_invalid_credentials(monkeypatch, tmp_path) -> None:
     assert "We couldn&#39;t sign you in with that email and password." in response.get_data(as_text=True)
 
 
-def test_login_redirects_to_next_path_when_safe(monkeypatch, tmp_path) -> None:
+def test_login_redirects_to_dashboard_after_successful_login(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     _create_admin()
     _create_user()
     client = app.app.test_client()
     response = client.post(
         "/login",
-        data={"email": "athlete@example.com", "password": "password123", "next": "/workout-performance"},
+        data={"email": "athlete@example.com", "password": "password123"},
         follow_redirects=False,
     )
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/workout-performance")
+    assert response.headers["Location"].endswith("/")
 
 
-def test_login_ignores_unsafe_next_url(monkeypatch, tmp_path) -> None:
+def test_login_ignores_user_supplied_next_url(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     _create_admin()
     _create_user()
@@ -1024,34 +1024,6 @@ def test_login_ignores_unsafe_next_url(monkeypatch, tmp_path) -> None:
     response = client.post(
         "/login",
         data={"email": "athlete@example.com", "password": "password123", "next": "https://evil.example"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
-
-
-def test_login_ignores_unsafe_next_url_with_protocol_relative_target(monkeypatch, tmp_path) -> None:
-    _configure_auth(monkeypatch, tmp_path)
-    _create_admin()
-    _create_user()
-    client = app.app.test_client()
-    response = client.post(
-        "/login",
-        data={"email": "athlete@example.com", "password": "password123", "next": "//evil.example"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
-
-
-def test_login_ignores_unsafe_next_url_with_backslash(monkeypatch, tmp_path) -> None:
-    _configure_auth(monkeypatch, tmp_path)
-    _create_admin()
-    _create_user()
-    client = app.app.test_client()
-    response = client.post(
-        "/login",
-        data={"email": "athlete@example.com", "password": "password123", "next": "/\\evil"},
         follow_redirects=False,
     )
     assert response.status_code == 302
