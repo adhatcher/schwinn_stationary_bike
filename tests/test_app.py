@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 from io import BytesIO
 import textwrap
@@ -56,6 +57,12 @@ def _create_user(
     email_verified: bool = False,
 ):
     return app.create_user(email, password, role=role, name=name, email_verified=email_verified)
+
+
+def test_email_is_valid_handles_none_and_normalizes_whitespace() -> None:
+    assert app.email_is_valid(None) is False
+    assert app.email_is_valid("") is False
+    assert app.email_is_valid(" USER@Example.COM ") is True
 
 
 def _create_admin(email: str = "admin@example.com", password: str = "password123", *, name: str = "Admin User"):
@@ -441,6 +448,60 @@ def test_upload_history_csv_merges_into_history(monkeypatch, tmp_path) -> None:
     assert float(history_df.loc[0, "Distance"]) == 3.5
 
 
+def test_upload_history_imports_ten_rows_and_graph_endpoints_return_data(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+
+    rows = [
+        ",".join(
+            [
+                f"2026-01-{day:02d}",
+                str(float(day)),
+                str(10.0 + day),
+                str(30 + day),
+                str(100 + day * 5),
+                str(120 + day),
+                str(70 + day),
+                str(5),
+            ]
+        )
+        for day in range(1, 11)
+    ]
+    csv_text = ",".join(app.COLUMN_NAMES) + "\n" + "\n".join(rows) + "\n"
+
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.post(
+        "/upload-history",
+        data={"history_csv_file": (BytesIO(csv_text.encode("utf-8")), "history.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert history_file.exists()
+    history_df = pd.read_csv(history_file)
+    assert len(history_df) == 10
+    assert float(history_df.loc[0, "Distance"]) == 1.0
+    assert float(history_df.loc[9, "Distance"]) == 10.0
+
+    response = client.get("/api/grafana/summary?field=Distance&from=2026-01-01&to=2026-01-10")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["workout_count"] == 10
+    assert payload["fields"] == ["Distance"]
+    assert payload["minimums"]["Distance"] == 1.0
+    assert payload["maximums"]["Distance"] == 10.0
+    assert payload["averages"]["Distance"] == 5.5
+
+    response = client.get("/api/grafana/workouts?field=Distance&from=2026-01-01&to=2026-01-10")
+    assert response.status_code == 200
+    points = response.get_json()
+    assert len(points) == 10
+    assert points[0]["field"] == "Distance"
+    assert points[-1]["value"] == 10.0
+
+
 def test_upload_workout_post_dat_upload_merges_data(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
@@ -457,6 +518,60 @@ def test_upload_workout_post_dat_upload_merges_data(monkeypatch, tmp_path) -> No
     assert history_file.exists()
     history_df = pd.read_csv(history_file)
     assert len(history_df) == 1
+
+
+def test_upload_workout_with_ten_dat_rows_imports_history_and_graphs(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+    header = "\n".join(["header"] * 8)
+    workouts = [
+        json.dumps(
+            {
+                "workoutDate": {"Month": 1, "Day": day, "Year": 2026},
+                "distance": float(day),
+                "averageSpeed": 10.0 + float(day),
+                "totalWorkoutTime": {"Hours": 0, "Minutes": 30 + day},
+                "totalCalories": 200 + day * 5,
+                "avgHeartRate": 120 + day,
+                "avgRpm": 70 + day,
+                "avgLevel": 5,
+            }
+        )
+        for day in range(1, 11)
+    ]
+    dat_text = f"{header}\n" + "\n".join(workouts)
+
+    client = app.app.test_client()
+    _log_in(client)
+    response = client.post(
+        "/upload-workout",
+        data={"dat_file": (BytesIO(dat_text.encode("utf-8")), "AARON.DAT")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert history_file.exists()
+    history_df = pd.read_csv(history_file)
+    assert len(history_df) == 10
+    assert float(history_df.loc[0, "Distance"]) == 1.0
+    assert float(history_df.loc[9, "Distance"]) == 10.0
+
+    response = client.get("/api/grafana/summary?field=Distance&from=2026-01-01&to=2026-01-10")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["workout_count"] == 10
+    assert payload["fields"] == ["Distance"]
+    assert payload["minimums"]["Distance"] == 1.0
+    assert payload["maximums"]["Distance"] == 10.0
+    assert payload["averages"]["Distance"] == 5.5
+
+    response = client.get("/api/grafana/workouts?field=Distance&from=2026-01-01&to=2026-01-10")
+    assert response.status_code == 200
+    points = response.get_json()
+    assert len(points) == 10
+    assert points[0]["field"] == "Distance"
+    assert points[-1]["value"] == 10.0
 
 
 def test_upload_workout_post_uses_disk_dat_when_present(monkeypatch, tmp_path) -> None:

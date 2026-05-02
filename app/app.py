@@ -263,11 +263,13 @@ def init_auth_db() -> None:
         connection.commit()
 
 
-def normalize_email(email: str) -> str:
-    return email.strip().lower()
+def normalize_email(email: str | None) -> str:
+    if email is None:
+        return ""
+    return str(email).strip().lower()
 
 
-def email_is_valid(email: str) -> bool:
+def email_is_valid(email: str | None) -> bool:
     normalized = normalize_email(email)
     if not normalized or len(normalized) > 254:
         return False
@@ -1662,5 +1664,5 @@ def upload_history():
 
 
 if __name__ == "__main__":
-    debug_mode = os.environ.get("FLASK_DEBUG", "").lower() in {"1", "true", "yes"}
-    app.run(host=HOST, port=PORT, debug=debug_mode)
+    # Disable Flask debug mode in direct startup to avoid stack trace exposure.
+    app.run(host=HOST, port=PORT, debug=False)

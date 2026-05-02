@@ -2,11 +2,12 @@ UV ?= uv
 IMAGE ?= schwinn-dashboard:latest
 PLATFORM ?= linux/amd64
 PORT ?= 8080
+DOCKER_RUN_PORT ?= $(PORT)
 DATA_DIR ?= /app/data
 DOCKER_TEST_PORT ?= 18080
 DOCKER_TEST_NAME ?= schwinn-dashboard-ui-test
 
-.PHONY: install lock test coverage security run build docker-build docker-run docker-ui-test local-test clean
+.PHONY: install lock test coverage security run build docker-build docker-run docker-ui-test local-test precommit clean
 
 install:
 	$(UV) sync
@@ -26,6 +27,8 @@ security:
 
 local-test: test coverage security docker-ui-test
 
+precommit: local-test
+
 run:
 	$(UV) run python app/app.py
 
@@ -34,11 +37,11 @@ build: docker-build
 docker-build:
 	docker build --platform $(PLATFORM) -t $(IMAGE) .
 
-docker-run:
+docker-run: docker-build
 	docker run --rm \
 		-e PORT=$(PORT) \
 		-e DATA_DIR=$(DATA_DIR) \
-		-p $(PORT):$(PORT) \
+		-p $(DOCKER_RUN_PORT):$(PORT) \
 		-v "$(PWD)/app/data:$(DATA_DIR)" \
 		--platform $(PLATFORM) \
 		$(IMAGE)
