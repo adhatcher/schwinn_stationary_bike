@@ -2,14 +2,10 @@ FROM python:3.14-alpine AS builder
 
 WORKDIR /app
 
-ENV POETRY_VERSION=2.3.2
+COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
 
-RUN pip install --no-cache-dir \
-    "poetry==${POETRY_VERSION}" \
-    "poetry-plugin-export>=1.8.0"
-
-COPY pyproject.toml poetry.lock ./
-RUN poetry export --only main --format requirements.txt --output requirements.txt --without-hashes
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --format requirements-txt --output-file requirements.txt --no-hashes
 
 
 FROM python:3.14-alpine

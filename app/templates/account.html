@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account Settings</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="page">
+  {% set subtitle = "Manage your profile, password, and account image." %}
+  {% include "_header.html" %}
+
+  <div class="grid account-settings-grid">
+    <section class="card form-card">
+      <h2>Profile</h2>
+      {% if message %}
+        <div class="message {% if message_type == 'error' %}message-error{% endif %}">{{ message }}</div>
+      {% endif %}
+      <form method="post">
+        <input type="hidden" name="action" value="profile">
+        <div class="row">
+          <div>
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" value="{{ display_user_name(current_user) }}" autocomplete="name" required>
+          </div>
+          <div>
+            <label>Email</label>
+            <div class="readonly-field">{{ current_user["email"] }}</div>
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn" type="submit">Save Profile</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card form-card">
+      <h2>Password</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="password">
+        <div class="row">
+          <div>
+            <label for="current_password">Current Password</label>
+            <input type="password" id="current_password" name="current_password" autocomplete="current-password" required>
+          </div>
+          <div>
+            <label for="new_password">New Password</label>
+            <input type="password" id="new_password" name="new_password" autocomplete="new-password" required>
+          </div>
+          <div>
+            <label for="confirm_password">Confirm Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required>
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn" type="submit">Update Password</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card form-card">
+      <h2>Profile Image</h2>
+      <div class="avatar-preview-row">
+        <span class="avatar-badge avatar-preview" aria-hidden="true">
+          {% if user_has_avatar(current_user) %}
+            <img src="{{ url_for('account_avatar') }}" alt="">
+          {% else %}
+            {{ user_initials(current_user) }}
+          {% endif %}
+        </span>
+        <p class="muted">Images are optimized into a compact square avatar for the header and account menu.</p>
+      </div>
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="avatar">
+        <div class="row">
+          <div>
+            <label for="avatar">Upload Image</label>
+            <input type="file" id="avatar" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" required>
+          </div>
+          <div>
+            <label for="avatar_size">Processed Size</label>
+            <input type="number" id="avatar_size" name="avatar_size" min="{{ avatar_size_min }}" max="{{ avatar_size_max }}" value="{{ avatar_size }}" step="1">
+          </div>
+        </div>
+        <p class="muted">Uploads are capped at 2 MB. The stored image is resized between {{ avatar_size_min }}px and {{ avatar_size_max }}px square.</p>
+        <div class="action-row">
+          <button class="btn" type="submit">Update Image</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+</body>
+</html>

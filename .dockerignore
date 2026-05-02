@@ -8,6 +8,9 @@ venv
 .git
 .gitignore
 .pytest_cache
+node_modules
+test-results
+playwright-report
 app/data/*.csv
 app/data/*.db
 app/logs/*.log

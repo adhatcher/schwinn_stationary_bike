@@ -145,10 +145,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
-      - name: Install Poetry
-        run: python3 -m pip install "poetry==2.0.0"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.7"
 
       - name: Remediate selected alert
         id: remediate
@@ -202,7 +204,7 @@ jobs:
         run: |
           BRANCH="${{ steps.result.outputs.branch }}"
           git checkout -B "$BRANCH"
-          git add pyproject.toml poetry.lock
+          git add pyproject.toml uv.lock
 
           if git diff --staged --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
