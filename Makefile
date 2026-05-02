@@ -1,16 +1,13 @@
 UV ?= uv
-CODEQL ?= codeql
-CODEQL_DB ?= codeql-db
-CODEQL_OUTPUT ?= codeql-results.sarif
-IMAGE ?= schwinn-dashboard:latest
+IMAGE ?= schwinn:latest
 PLATFORM ?= linux/amd64
 PORT ?= 8080
 DOCKER_RUN_PORT ?= $(PORT)
 DATA_DIR ?= /app/data
 DOCKER_TEST_PORT ?= 18080
-DOCKER_TEST_NAME ?= schwinn-dashboard-ui-test
+DOCKER_TEST_NAME ?= schwinn-ui-test
 
-.PHONY: install lock test coverage security codeql run build docker-build docker-run docker-ui-test local-test precommit clean
+.PHONY: install lock test coverage security run build docker-build docker-run docker-ui-test local-test precommit clean
 
 install:
 	$(UV) sync
@@ -27,13 +24,6 @@ coverage:
 security:
 	$(UV) run pip-audit
 	$(UV) run bandit -r app -x app/logs
-	$(MAKE) codeql
-
-codeql:
-	@command -v $(CODEQL) >/dev/null 2>&1 || { echo "CodeQL CLI is not installed. Install from https://github.com/github/codeql-cli-binaries/releases/latest" >&2; exit 1; }
-	@rm -rf $(CODEQL_DB)
-	$(CODEQL) database create $(CODEQL_DB) --language=python --source-root=.
-	$(CODEQL) database analyze $(CODEQL_DB) --format=sarif-latest --output=$(CODEQL_OUTPUT)
 
 local-test: test coverage security docker-ui-test
 
@@ -77,4 +67,4 @@ docker-ui-test: docker-build
 	npx playwright test tests/docker-ui.spec.mjs --browser=chromium
 
 clean:
-	rm -rf .pytest_cache .venv
+	rm -rf .pytest_cache .venv 

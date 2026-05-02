@@ -29,3 +29,6 @@ node_modules/
 test-results/
 playwright-report/
 app/logs/
+.tools/
+.tools/*
+
