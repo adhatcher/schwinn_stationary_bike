@@ -19,6 +19,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from PIL import Image, UnidentifiedImageError
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -50,7 +51,10 @@ app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB upload cap
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}
-app.secret_key = os.getenv("SECRET_KEY", "development-only-secret-change-me")
+secret_key = os.getenv("SECRET_KEY")
+if not secret_key:
+    secret_key = secrets.token_urlsafe(64)
+app.secret_key = secret_key
 
 
 def env_first(*names: str, default: str = "") -> str:
@@ -81,6 +85,11 @@ MAIL_FROM = env_first("MAIL_FROM", "MAIL_FROM_ADDRESS", default=MAIL_USERNAME or
 PASSWORD_RESET_SALT = env_first("PASSWORD_RESET_SALT", default="schwinn-password-reset-salt")
 PASSWORD_RESET_MAX_AGE_SECONDS = int(os.getenv("PASSWORD_RESET_MAX_AGE_SECONDS", "3600"))
 USER_SESSION_KEY = "user_id"
+AVATAR_SIZE_MIN_PX = 48
+AVATAR_SIZE_DEFAULT_PX = 96
+AVATAR_SIZE_MAX_PX = 256
+AVATAR_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
+AVATAR_MIME_TYPE = "image/webp"
 PUBLIC_ENDPOINTS = {
     "healthz",
     "metrics",
@@ -211,8 +220,14 @@ def init_auth_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL DEFAULT '',
+                first_name TEXT NOT NULL DEFAULT '',
+                last_name TEXT NOT NULL DEFAULT '',
                 email TEXT NOT NULL UNIQUE,
+                email_verified INTEGER NOT NULL DEFAULT 0,
                 password_hash TEXT NOT NULL,
+                avatar_data BLOB,
+                avatar_mime TEXT NOT NULL DEFAULT '',
                 role TEXT NOT NULL DEFAULT 'user',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -221,6 +236,18 @@ def init_auth_db() -> None:
         existing_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()
         }
+        if "name" not in existing_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+        if "first_name" not in existing_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''")
+        if "last_name" not in existing_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''")
+        if "email_verified" not in existing_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+        if "avatar_data" not in existing_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN avatar_data BLOB")
+        if "avatar_mime" not in existing_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN avatar_mime TEXT NOT NULL DEFAULT ''")
         if "role" not in existing_columns:
             connection.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
         connection.execute(
@@ -238,8 +265,103 @@ def init_auth_db() -> None:
         connection.commit()
 
 
-def normalize_email(email: str) -> str:
-    return email.strip().lower()
+def normalize_email(email: str | None) -> str:
+    if email is None:
+        return ""
+    return str(email).strip().lower()
+
+
+def email_is_valid(email: str | None) -> bool:
+    normalized = normalize_email(email)
+    if not normalized or len(normalized) > 254:
+        return False
+
+    if normalized.count("@") != 1:
+        return False
+
+    local_part, domain = normalized.split("@", 1)
+    if not local_part or not domain:
+        return False
+    if any(ch.isspace() for ch in normalized):
+        return False
+    if local_part.startswith(".") or local_part.endswith("."):
+        return False
+    if domain.startswith(".") or domain.endswith("."):
+        return False
+    if ".." in normalized:
+        return False
+    if "." not in domain:
+        return False
+
+    return True
+
+
+def normalize_name(name: str) -> str:
+    return " ".join(name.strip().split())
+
+
+def compose_full_name(first_name: str, last_name: str) -> str:
+    return normalize_name(f"{normalize_name(first_name)} {normalize_name(last_name)}")
+
+
+def display_user_name(user) -> str:
+    if user is None:
+        return ""
+    first_name = normalize_name(str(user["first_name"])) if "first_name" in user.keys() else ""
+    last_name = normalize_name(str(user["last_name"])) if "last_name" in user.keys() else ""
+    full_name = compose_full_name(first_name, last_name)
+    if full_name:
+        return full_name
+    name = normalize_name(str(user["name"])) if "name" in user.keys() else ""
+    return name or str(user["email"])
+
+
+def user_initials(user) -> str:
+    display_name = display_user_name(user)
+    words = [word for word in display_name.replace("@", " ").replace(".", " ").split() if word]
+    if not words:
+        return "U"
+    if len(words) == 1:
+        return words[0][:2].upper()
+    return f"{words[0][0]}{words[-1][0]}".upper()
+
+
+def user_has_avatar(user) -> bool:
+    return bool(user is not None and "avatar_data" in user.keys() and user["avatar_data"])
+
+
+def parse_avatar_size(raw_size: str) -> int:
+    try:
+        requested_size = int(raw_size)
+    except (TypeError, ValueError):
+        requested_size = AVATAR_SIZE_DEFAULT_PX
+    return max(AVATAR_SIZE_MIN_PX, min(requested_size, AVATAR_SIZE_MAX_PX))
+
+
+def process_avatar_upload(file_storage, *, requested_size: int = AVATAR_SIZE_DEFAULT_PX) -> bytes:
+    if not file_storage or not file_storage.filename:
+        raise ValueError("Choose an image file to upload.")
+    upload_bytes = file_storage.read()
+    if not upload_bytes:
+        raise ValueError("Choose an image file to upload.")
+    if len(upload_bytes) > AVATAR_UPLOAD_MAX_BYTES:
+        raise ValueError("Profile images must be 2 MB or smaller.")
+
+    size = parse_avatar_size(str(requested_size))
+    try:
+        with Image.open(BytesIO(upload_bytes)) as image:
+            image = image.convert("RGB")
+            image.thumbnail((size, size), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (size, size), (255, 255, 255))
+            left = (size - image.width) // 2
+            top = (size - image.height) // 2
+            canvas.paste(image, (left, top))
+            output = BytesIO()
+            canvas.save(output, format="WEBP", quality=78, method=6)
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError("Upload a PNG, JPEG, GIF, or WebP image.") from exc
+
+    return output.getvalue()
 
 
 def mask_email(email: str) -> str:
@@ -287,15 +409,38 @@ def get_user_by_id(user_id: int | None) -> sqlite3.Row | None:
         return connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
 
-def create_user(email: str, password: str, *, role: str = USER_ROLE) -> sqlite3.Row:
+def create_user(
+    email: str,
+    password: str,
+    *,
+    role: str = USER_ROLE,
+    name: str = "",
+    first_name: str = "",
+    last_name: str = "",
+    email_verified: bool = False,
+) -> sqlite3.Row:
     normalized = normalize_email(email)
+    normalized_first_name = normalize_name(first_name)
+    normalized_last_name = normalize_name(last_name)
+    normalized_name = normalize_name(name) or compose_full_name(normalized_first_name, normalized_last_name)
     if role not in VALID_ROLES:
         raise ValueError(f"Unsupported role: {role}")
     password_hash = generate_password_hash(password)
     with get_db_connection() as connection:
         cursor = connection.execute(
-            "INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)",
-            (normalized, password_hash, role),
+            """
+            INSERT INTO users (name, first_name, last_name, email, email_verified, password_hash, role)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                normalized_name,
+                normalized_first_name,
+                normalized_last_name,
+                normalized,
+                1 if email_verified else 0,
+                password_hash,
+                role,
+            ),
         )
         connection.commit()
         user_id = int(cursor.lastrowid)
@@ -309,6 +454,37 @@ def update_user_password(user_id: int, password: str) -> None:
     password_hash = generate_password_hash(password)
     with get_db_connection() as connection:
         connection.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        connection.commit()
+
+
+def update_user_profile(user_id: int, *, name: str) -> None:
+    with get_db_connection() as connection:
+        connection.execute("UPDATE users SET name = ? WHERE id = ?", (normalize_name(name), user_id))
+        connection.commit()
+
+
+def update_admin_identity(user_id: int, *, first_name: str, last_name: str, email: str, email_verified: bool) -> None:
+    normalized_first_name = normalize_name(first_name)
+    normalized_last_name = normalize_name(last_name)
+    full_name = compose_full_name(normalized_first_name, normalized_last_name)
+    with get_db_connection() as connection:
+        connection.execute(
+            """
+            UPDATE users
+            SET first_name = ?, last_name = ?, name = ?, email = ?, email_verified = ?
+            WHERE id = ?
+            """,
+            (normalized_first_name, normalized_last_name, full_name, normalize_email(email), 1 if email_verified else 0, user_id),
+        )
+        connection.commit()
+
+
+def update_user_avatar(user_id: int, avatar_data: bytes, *, avatar_mime: str = AVATAR_MIME_TYPE) -> None:
+    with get_db_connection() as connection:
+        connection.execute(
+            "UPDATE users SET avatar_data = ?, avatar_mime = ? WHERE id = ?",
+            (avatar_data, avatar_mime, user_id),
+        )
         connection.commit()
 
 
@@ -328,7 +504,7 @@ def delete_user(user_id: int) -> None:
 
 def list_users() -> list[sqlite3.Row]:
     with get_db_connection() as connection:
-        return connection.execute("SELECT * FROM users ORDER BY email ASC").fetchall()
+        return connection.execute("SELECT * FROM users ORDER BY COALESCE(NULLIF(name, ''), email) ASC").fetchall()
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -406,6 +582,10 @@ def current_user_is_admin() -> bool:
     return bool(user and str(user["role"]) == ADMIN_ROLE)
 
 
+def admin_email_is_verified(user) -> bool:
+    return bool(user and str(user["role"]) == ADMIN_ROLE and int(user["email_verified"] or 0) == 1)
+
+
 def login_user(user: sqlite3.Row) -> None:
     session.clear()
     session[USER_SESSION_KEY] = int(user["id"])
@@ -471,6 +651,9 @@ def build_reset_link(token: str) -> str:
 def inject_template_context() -> dict[str, object]:
     return {
         "current_user": current_user(),
+        "display_user_name": display_user_name,
+        "user_has_avatar": user_has_avatar,
+        "user_initials": user_initials,
         "registration_enabled": is_registration_enabled(),
         "admin_exists": admin_exists(),
     }
@@ -813,6 +996,8 @@ def login():
         if user and check_password_hash(str(user["password_hash"]), password):
             login_user(user)
             audit_auth_event("login", email, "success", details="user signed in")
+            if str(user["role"]) == ADMIN_ROLE and not admin_email_is_verified(user):
+                return redirect(url_for("setup_admin", verify="email"))
             return redirect(url_for("welcome"))
         audit_auth_event("login", email, "failure", details="invalid email or password")
         message = "We couldn't sign you in with that email and password."
@@ -832,16 +1017,20 @@ def register():
     if current_user() is not None:
         return redirect(url_for("welcome"))
     if not is_registration_enabled():
-        return render_template("register.html", message="New user registration is currently disabled.", email=""), 403
+        return render_template("register.html", message="New user registration is currently disabled.", email="", name=""), 403
 
     message = ""
     email = ""
+    name = ""
     if request.method == "POST":
+        name = normalize_name(request.form.get("name", ""))
         email = normalize_email(request.form.get("email", ""))
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
 
-        if not email:
+        if not name:
+            message = "Enter your name to create your account."
+        elif not email:
             message = "Enter an email address to create your account."
         elif "@" not in email:
             message = "Enter a valid email address."
@@ -852,11 +1041,11 @@ def register():
         elif get_user_by_email(email) is not None:
             message = "That email address is already registered."
         else:
-            user = create_user(email, password, role=USER_ROLE)
+            user = create_user(email, password, role=USER_ROLE, name=name)
             login_user(user)
             return redirect(url_for("welcome"))
 
-    return render_template("register.html", message=message, email=email)
+    return render_template("register.html", message=message, email=email, name=name)
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
@@ -939,39 +1128,201 @@ def logout():
     return redirect(url_for("setup_admin" if not admin_exists() else "login", message="You have been signed out."))
 
 
+@app.route("/account/avatar", methods=["GET"])
+def account_avatar():
+    user = current_user()
+    if user is None or not user_has_avatar(user):
+        return Response(status=404)
+    return Response(
+        bytes(user["avatar_data"]),
+        mimetype=str(user["avatar_mime"] or AVATAR_MIME_TYPE),
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@app.route("/account", methods=["GET", "POST"])
+def account():
+    user = current_user()
+    if user is None:
+        return redirect(url_for("login"))
+
+    message = request.args.get("message", "")
+    message_type = "success" if message else ""
+    avatar_size = AVATAR_SIZE_DEFAULT_PX
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "profile":
+            name = normalize_name(request.form.get("name", ""))
+            if not name:
+                message = "Enter your name."
+                message_type = "error"
+            else:
+                update_user_profile(int(user["id"]), name=name)
+                audit_auth_event("profile_update", str(user["email"]), "success", details="name updated")
+                return redirect(url_for("account", message="Profile updated."))
+        elif action == "password":
+            current_password = request.form.get("current_password", "")
+            new_password = request.form.get("new_password", "")
+            confirm_password = request.form.get("confirm_password", "")
+            if not check_password_hash(str(user["password_hash"]), current_password):
+                audit_auth_event("password_change", str(user["email"]), "failure", details="current password mismatch")
+                message = "Current password is incorrect."
+                message_type = "error"
+            elif not password_is_valid(new_password):
+                audit_auth_event("password_change", str(user["email"]), "failure", details="password too short")
+                message = "Choose a new password with at least 8 characters."
+                message_type = "error"
+            elif new_password != confirm_password:
+                audit_auth_event("password_change", str(user["email"]), "failure", details="password confirmation mismatch")
+                message = "Passwords did not match. Please try again."
+                message_type = "error"
+            else:
+                update_user_password(int(user["id"]), new_password)
+                audit_auth_event("password_change", str(user["email"]), "success", details="password updated")
+                return redirect(url_for("account", message="Password updated."))
+        elif action == "avatar":
+            avatar_size = parse_avatar_size(request.form.get("avatar_size", ""))
+            try:
+                avatar_data = process_avatar_upload(request.files.get("avatar"), requested_size=avatar_size)
+                update_user_avatar(int(user["id"]), avatar_data)
+                audit_auth_event("profile_update", str(user["email"]), "success", details="avatar updated")
+                return redirect(url_for("account", message="Profile image updated."))
+            except ValueError as exc:
+                audit_auth_event("profile_update", str(user["email"]), "failure", details="avatar update failed")
+                message = str(exc)
+                message_type = "error"
+        else:
+            message = "Choose an account action."
+            message_type = "error"
+
+    return render_template(
+        "account.html",
+        message=message,
+        message_type=message_type,
+        avatar_size=avatar_size,
+        avatar_size_min=AVATAR_SIZE_MIN_PX,
+        avatar_size_max=AVATAR_SIZE_MAX_PX,
+    )
+
+
 @app.route("/setup-admin", methods=["GET", "POST"])
 def setup_admin():
+    current = current_user()
     if admin_exists():
-        if current_user() is not None:
+        if current is not None and str(current["role"]) == ADMIN_ROLE and not admin_email_is_verified(current):
+            return update_admin_setup(current)
+        if current is not None:
             return redirect(url_for("welcome"))
         return redirect(url_for("login"))
 
     message = ""
     email = ""
+    first_name = ""
+    last_name = ""
+    email_verified = False
     if request.method == "POST":
+        first_name = normalize_name(request.form.get("first_name", ""))
+        last_name = normalize_name(request.form.get("last_name", ""))
         email = normalize_email(request.form.get("email", ""))
+        email_verified = request.form.get("email_verified") == "true"
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
 
-        if not email:
+        if not first_name:
+            message = "Enter the admin first name."
+        elif not last_name:
+            message = "Enter the admin last name."
+        elif not email:
             message = "Enter an email address for the admin account."
-        elif "@" not in email:
+        elif not email_is_valid(email):
             message = "Enter a valid email address."
         elif not password_is_valid(password):
             message = "Choose a password with at least 8 characters."
         elif password != confirm_password:
             message = "Passwords did not match. Please try again."
         else:
-            user = create_user(email, password, role=ADMIN_ROLE)
+            user = create_user(
+                email,
+                password,
+                role=ADMIN_ROLE,
+                first_name=first_name,
+                last_name=last_name,
+                email_verified=email_verified,
+            )
             if not set_registration_enabled(False):
                 delete_user(int(user["id"]))
                 message = "We couldn't finish admin setup right now. Please try again."
-                return render_template("setup_admin.html", message=message, email=email)
+                return render_template(
+                    "setup_admin.html",
+                    message=message,
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    email_verified=email_verified,
+                    existing_admin=False,
+                )
             login_user(user)
             audit_auth_event("admin_bootstrap", email, "success", details="initial admin account created")
             return redirect(url_for("admin_dashboard", message="Admin account created."))
 
-    return render_template("setup_admin.html", message=message, email=email)
+    return render_template(
+        "setup_admin.html",
+        message=message,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        email_verified=email_verified,
+        existing_admin=False,
+    )
+
+
+def update_admin_setup(user):
+    message = "Verify or correct the admin email address before continuing."
+    email = str(user["email"])
+    first_name = normalize_name(str(user["first_name"])) if "first_name" in user.keys() else ""
+    last_name = normalize_name(str(user["last_name"])) if "last_name" in user.keys() else ""
+    if not first_name and not last_name:
+        name_parts = display_user_name(user).split()
+        first_name = name_parts[0] if name_parts else ""
+        last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+    email_verified = False
+
+    if request.method == "POST":
+        first_name = normalize_name(request.form.get("first_name", ""))
+        last_name = normalize_name(request.form.get("last_name", ""))
+        email = normalize_email(request.form.get("email", ""))
+        email_verified = request.form.get("email_verified") == "true"
+        if not first_name:
+            message = "Enter the admin first name."
+        elif not last_name:
+            message = "Enter the admin last name."
+        elif not email:
+            message = "Enter an email address for the admin account."
+        elif not email_is_valid(email):
+            message = "Enter a valid email address."
+        elif not email_verified:
+            message = "Confirm that the admin email address has been verified."
+        else:
+            update_admin_identity(
+                int(user["id"]),
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                email_verified=True,
+            )
+            audit_auth_event("admin_email_verify", email, "success", details="admin email verified")
+            return redirect(url_for("admin_dashboard", message="Admin email verified."))
+
+    return render_template(
+        "setup_admin.html",
+        message=message,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        email_verified=email_verified,
+        existing_admin=True,
+    )
 
 
 def admin_required():
@@ -1006,6 +1357,7 @@ def admin_users():
     message = request.args.get("message", "")
     if request.method == "POST":
         action = request.form.get("action", "")
+        target_name = normalize_name(request.form.get("name", ""))
         target_email = normalize_email(request.form.get("email", ""))
         target_role = request.form.get("role", USER_ROLE)
         target_id_raw = request.form.get("user_id", "")
@@ -1015,7 +1367,10 @@ def admin_users():
         actor_email = str(actor["email"]) if actor is not None else ""
 
         if action == "create_user":
-            if not target_email:
+            if not target_name:
+                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="missing name")
+                message = "Enter a name for the new user."
+            elif not target_email:
                 audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="missing email")
                 message = "Enter an email address for the new user."
             elif "@" not in target_email:
@@ -1029,7 +1384,7 @@ def admin_users():
                 message = "That email address already belongs to an existing user."
             else:
                 temporary_password = generate_temporary_password()
-                create_user(target_email, temporary_password, role=target_role)
+                create_user(target_email, temporary_password, role=target_role, name=target_name)
                 audit_auth_event("user_create", target_email, "success", actor_email=actor_email, details=f"user created role={target_role}")
                 try:
                     reset_link = build_reset_link(generate_password_reset_token(target_email))
@@ -1329,5 +1684,5 @@ def upload_history():
 
 
 if __name__ == "__main__":
-    debug_mode = os.environ.get("FLASK_DEBUG", "").lower() in {"1", "true", "yes"}
-    app.run(host=HOST, port=PORT, debug=debug_mode)
+    # Disable Flask debug mode in direct startup to avoid stack trace exposure.
+    app.run(host=HOST, port=PORT, debug=False)

@@ -21,6 +21,10 @@
         <input type="hidden" name="action" value="create_user">
         <div class="row">
           <div>
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" autocomplete="name" required>
+          </div>
+          <div>
             <label for="email">Email</label>
             <input type="email" id="email" name="email" autocomplete="email" required>
           </div>
@@ -46,7 +50,8 @@
         {% for user in users %}
           <article class="admin-user-card">
             <div class="admin-user-meta">
-              <strong>{{ user["email"] }}</strong>
+              <strong>{{ display_user_name(user) }}</strong>
+              <span class="muted">{{ user["email"] }}</span>
               <span class="muted">Role: {{ user["role"]|title }}</span>
             </div>
 

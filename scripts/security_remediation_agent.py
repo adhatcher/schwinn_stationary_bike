@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dependabot security remediation agent for Poetry projects."""
+"""Dependabot security remediation agent for uv projects."""
 
 from __future__ import annotations
 
@@ -225,9 +225,8 @@ def _format_pr_body(fields: dict[str, Any], result: dict[str, Any], old_version:
         "",
         "### Validation",
         "Executed:",
-        "- `python3 -m poetry install`",
-        "- `python3 -m poetry run pytest`",
-        "- `python3 -m poetry run ruff check .`",
+        "- `uv sync`",
+        "- `uv run pytest`",
         "",
         "### Source Alert",
         fields["html_url"] or "Unavailable",
@@ -313,12 +312,12 @@ def _remediate_alert(args: argparse.Namespace) -> int:
         _write_json(Path(args.output), base_result)
         return 0
 
-    lock_path = Path("poetry.lock")
+    lock_path = Path("uv.lock")
     before_versions = _load_lock_versions(lock_path)
     package_key = _normalize_package_name(package_name)
     old_version = before_versions.get(package_key)
 
-    update_command = ["python3", "-m", "poetry", "update", package_name]
+    update_command = ["uv", "lock", "--upgrade-package", package_name]
     base_result["commands"].append(" ".join(shlex.quote(part) for part in update_command))
     update_run = _run(update_command)
     remediation_attempts = [update_run]
@@ -326,11 +325,11 @@ def _remediate_alert(args: argparse.Namespace) -> int:
     if update_run.returncode != 0 and fields["first_patched_version"]:
         constraint = _build_fallback_constraint(fields["first_patched_version"])
         if constraint:
-            add_command = ["python3", "-m", "poetry", "add", f"{package_name}@{constraint}"]
+            add_command = ["uv", "add", f"{package_name}{constraint}"]
             base_result["commands"].append(" ".join(shlex.quote(part) for part in add_command))
             remediation_attempts.append(_run(add_command))
 
-    changed_files = _run(["git", "status", "--porcelain", "--", "pyproject.toml", "poetry.lock"])
+    changed_files = _run(["git", "status", "--porcelain", "--", "pyproject.toml", "uv.lock"])
     if changed_files.returncode != 0:
         base_result["reason"] = "Failed to inspect git status after remediation."
         _write_json(Path(args.output), base_result)
@@ -351,9 +350,8 @@ def _remediate_alert(args: argparse.Namespace) -> int:
         return 0
 
     quality_commands = [
-        ["python3", "-m", "poetry", "install"],
-        ["python3", "-m", "poetry", "run", "pytest"],
-        ["python3", "-m", "poetry", "run", "ruff", "check", "."],
+        ["uv", "sync"],
+        ["uv", "run", "pytest"],
     ]
 
     for command in quality_commands:

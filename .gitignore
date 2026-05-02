@@ -1,4 +1,5 @@
 AARON.DAT
+.venv/
 .venv/*
 .env
 .idea
@@ -24,3 +25,10 @@ run_read_file.sh
 coverage.xml
 .coverage
 app/logs/*
+node_modules/
+test-results/
+playwright-report/
+app/logs/
+.tools/
+.tools/*
+

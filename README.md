@@ -36,6 +36,25 @@ make run
 
 Then open `http://localhost:8080`.
 
+## Security checks
+
+This project now includes a local security workflow:
+
+- `make security` runs `pip-audit`, `bandit`, and a local CodeQL analysis.
+- `make local-test` runs `make test`, `make coverage`, `make security`, and `make docker-ui-test`.
+
+## Git hooks
+
+This repository includes a local Git pre-push hook that runs `make local-test` before pushing. To enable it on your machine, run:
+
+```bash
+make git-hooks
+```
+
+That sets `git config core.hooksPath .githooks` and lets Git execute `.githooks/pre-push`.
+
+> Note: this is local config only. Other contributors must also run `make git-hooks` if they want the same hook behavior.
+
 ## Local secrets
 
 Keep real credentials in a local `.env` file that is not committed. A safe workflow is:
