@@ -1,4 +1,5 @@
 AARON.DAT
+.venv/
 .venv/*
 .env
 .idea

@@ -5,7 +5,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import secrets
 import sqlite3
 import smtplib
@@ -52,7 +51,10 @@ app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB upload cap
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}
-app.secret_key = os.getenv("SECRET_KEY", "development-only-secret-change-me")
+secret_key = os.getenv("SECRET_KEY")
+if not secret_key:
+    secret_key = secrets.token_urlsafe(64)
+app.secret_key = secret_key
 
 
 def env_first(*names: str, default: str = "") -> str:
@@ -273,7 +275,25 @@ def email_is_valid(email: str | None) -> bool:
     normalized = normalize_email(email)
     if not normalized or len(normalized) > 254:
         return False
-    return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized))
+
+    if normalized.count("@") != 1:
+        return False
+
+    local_part, domain = normalized.split("@", 1)
+    if not local_part or not domain:
+        return False
+    if any(ch.isspace() for ch in normalized):
+        return False
+    if local_part.startswith(".") or local_part.endswith("."):
+        return False
+    if domain.startswith(".") or domain.endswith("."):
+        return False
+    if ".." in normalized:
+        return False
+    if "." not in domain:
+        return False
+
+    return True
 
 
 def normalize_name(name: str) -> str:
