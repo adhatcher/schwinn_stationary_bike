@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+echo "Running make local-test before push..."
+make local-test
+
+echo "make local-test passed. Proceeding with git push."
