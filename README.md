@@ -101,7 +101,7 @@ export AUTH_DB_FILE=/custom/path/users.db
 When the app is behind a reverse proxy like SWAG, set the public HTTPS URL so password reset emails contain the correct external link:
 
 ```bash
-export PUBLIC_BASE_URL="https://schwinn.aaronhatcher.com"
+export PUBLIC_BASE_URL="https://<yoursite>.<yourdomain.com>"
 ```
 
 ## Password reset email
@@ -131,7 +131,7 @@ export SMTP_SECURE="tls"
 export MAIL_FROM_ADDRESS="no-reply@example.com"
 ```
 
-For this repo, the easiest path is to keep those values in your local `.env` and commit only [.env.example](/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.env.example).
+For this repo, the easiest path is to keep those values in your local `.env` and commit only [.env.example](/Users/<user>/Documents/Development/schwinn/.env.example).
 
 Optional reset settings:
 
@@ -191,7 +191,7 @@ PORT=9090 DATA_DIR=/app/custom-data docker compose up --build
 
 ## UI workflow
 
-1. Upload `<user>.DAT` (or place file at `/app/data/AARON.DAT`).
+1. Upload `<user>.DAT` (or place file at `/app/data/<user>.DAT`).
 2. Choose start/end date.
 3. Select fields to include.
 4. Use table header dropdown filters (date filter supports checkbox multi-select).

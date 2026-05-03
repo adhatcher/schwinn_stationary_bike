@@ -1,0 +1,27 @@
+C4Container
+title Container Diagram - Schwinn Workout Application
+
+Person(user, "User", "Views workout history, charts, ride metrics, and manages ride data")
+
+System_Boundary(schwinn, "Schwinn Application") {
+    Container(web_ui, "Web UI", "HTML/CSS/JavaScript", "Browser-based interface for viewing workouts, charts, and statistics")
+    Container(api_app, "Python API Application", "FastAPI / Python", "Serves API endpoints, renders pages, parses workout data, calculates metrics, and generates charts")
+    Container(metrics, "Metrics Endpoint", "Prometheus format", "Exposes application and endpoint metrics for scraping")
+    ContainerDb(local_data, "Workout Data Store", "CSV / SQLite", "Stores imported workout history and calculated ride metadata")
+    Container(logs, "Application Logs", "Rotating log files", "Stores application logs for troubleshooting and auditability")
+}
+
+System_Ext(strava, "Strava API", "Optional external ride upload destination")
+System_Ext(mapmyride, "MapMyRide", "Optional external ride upload destination")
+System_Ext(prometheus, "Prometheus", "Scrapes application metrics")
+System_Ext(container_runtime, "Docker Runtime", "Runs the Schwinn application container")
+
+Rel(user, web_ui, "Uses", "HTTPS/HTTP")
+Rel(web_ui, api_app, "Calls", "HTTP/JSON")
+Rel(api_app, local_data, "Reads/writes workout history", "File I/O / SQL")
+Rel(api_app, metrics, "Publishes runtime metrics", "Internal")
+Rel(api_app, logs, "Writes logs", "File I/O")
+Rel(prometheus, metrics, "Scrapes", "HTTP")
+Rel(api_app, strava, "Uploads ride activities", "HTTPS/API")
+Rel(api_app, mapmyride, "Potential future integration", "HTTPS/API")
+Rel(container_runtime, api_app, "Runs containerized app")
