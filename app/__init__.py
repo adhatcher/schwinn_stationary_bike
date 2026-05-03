@@ -1,1 +1,1 @@
-# Package marker for the Schwinn application.
+"""Schwinn application package."""

@@ -1,3 +1,5 @@
+"""Pytest configuration for importing the local Schwinn package."""
+
 from __future__ import annotations
 
 import sys
