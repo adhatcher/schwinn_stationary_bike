@@ -201,33 +201,23 @@ Historical data is persisted in `/app/data/Workout_History.csv`.
 
 ## Architecture
 
-Architecture diagrams are stored under `docs/architecture/`.
+Architecture diagrams are generated from the diagram sources under `docs/architecture/` and published as dark-theme images under `docs/images/`.
 
-### Canonical C4 model
+### C1 System Context diagram
 
-The canonical architecture model is written in Structurizr DSL:
+![C1 System Context diagram](docs/images/c1-system-context-dark.svg)
 
-- `docs/architecture/structurizr/workspace.dsl`
 
-This is the source of truth for the C4 model.
+![C1 System Context diagram](docs/images/c1-system-context-dark-key.svg)
 
-### C4-PlantUML diagrams
+### C2 Container diagram
 
-Kroki-friendly C4 diagrams are stored here:
+![C2 Container diagram](docs/images/c2-container-dark.svg)
 
-- `docs/architecture/plantuml/c2-container.puml`
-- `docs/architecture/plantuml/c3-component.puml`
+![C2 Container diagram key](docs/images/c2-container-dark-key.svg)
 
-These use C4-PlantUML syntax and are intended for rendering through PlantUML or Kroki.
+### C3 Component diagram
 
-### Mermaid preview diagrams
+![C3 Component diagram](docs/images/c3-component-dark.svg)
 
-Mermaid-compatible preview diagrams are stored here:
-
-- `docs/architecture/mermaid/c2-container.mmd`
-- `docs/architecture/mermaid/c3-component.mmd`
-- `docs/architecture/mermaid/c4-code.mmd`
-
-These use standard Mermaid `flowchart` syntax so they are easier to preview in VS Code, GitHub, and Mermaid-based renderers.
-
-The Mermaid diagrams are not the canonical C4 source. They are lightweight preview diagrams.
+![C3 Component diagram key](docs/images/c3-component-dark-key.svg)

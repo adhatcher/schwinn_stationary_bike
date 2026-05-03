@@ -32,3 +32,5 @@ playwright-report/
 app/data/*.csv
 app/data/*.db
 app/logs/
+
+docs/

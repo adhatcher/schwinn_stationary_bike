@@ -1,9 +1,19 @@
 workspace "Schwinn Workout Application" "Architecture model for the Schwinn workout tracking application." {
 
+    properties {
+        structurizr.inspection.model.softwaresystem.documentation info
+        structurizr.inspection.model.softwaresystem.decisions info
+    }
+
     model {
         user = person "User" "Views workout history, charts, ride metrics, and manages ride data."
 
         schwinn = softwareSystem "Schwinn Workout Application" "Tracks Schwinn workout history, ride statistics, charts, and optional ride exports." {
+            properties {
+                structurizr.inspection.model.softwaresystem.documentation info
+                structurizr.inspection.model.softwaresystem.decisions info
+            }
+
             web = container "Web UI" "Browser-based interface for viewing workouts, charts, and statistics." "HTML/CSS/JavaScript"
 
             api = container "Python Web Application" "Serves pages and APIs, parses workout data, calculates metrics, generates charts, and exposes metrics." "FastAPI / Python" {
@@ -35,32 +45,32 @@ workspace "Schwinn Workout Application" "Architecture model for the Schwinn work
         user -> web "Uses" "HTTP/HTTPS"
         web -> api "Calls" "HTTP/JSON"
 
-        api -> data "Reads and writes workout history"
-        api -> logs "Writes logs"
+        api -> data "Reads and writes workout history" "File I/O / SQL"
+        api -> logs "Writes logs" "File I/O"
         prometheus -> api "Scrapes /metrics" "HTTP"
         api -> strava "Uploads rides" "HTTPS/API"
         api -> mapmyride "Potential future integration" "HTTPS/API"
 
-        main -> config "Loads settings from"
-        main -> logging "Initializes"
-        main -> metrics "Initializes"
-        main -> authRoutes "Registers router"
-        main -> workoutRoutes "Registers router"
+        main -> config "Loads settings from" "Python import"
+        main -> logging "Initializes" "Python import"
+        main -> metrics "Initializes" "Python import"
+        main -> authRoutes "Registers router" "FastAPI router registration"
+        main -> workoutRoutes "Registers router" "FastAPI router registration"
 
-        authRoutes -> authService "Delegates authentication logic to"
-        authService -> authDb "Reads/writes auth data through"
-        authService -> authModels "Uses"
+        authRoutes -> authService "Delegates authentication logic to" "Python function call"
+        authService -> authDb "Reads/writes auth data through" "Python function call"
+        authService -> authModels "Uses" "Python import"
 
-        workoutRoutes -> workoutHistory "Requests workout summaries from"
-        workoutRoutes -> workoutParser "Imports workout files through"
-        workoutRoutes -> chartGenerator "Requests chart generation from"
+        workoutRoutes -> workoutHistory "Requests workout summaries from" "Python function call"
+        workoutRoutes -> workoutParser "Imports workout files through" "Python function call"
+        workoutRoutes -> chartGenerator "Requests chart generation from" "Python function call"
 
-        workoutParser -> data "Reads imported workout data from"
-        workoutHistory -> data "Reads/writes workout records"
-        chartGenerator -> workoutHistory "Uses aggregated workout data"
+        workoutParser -> data "Reads imported workout data from" "File I/O / SQL"
+        workoutHistory -> data "Reads/writes workout records" "File I/O / SQL"
+        chartGenerator -> workoutHistory "Uses aggregated workout data" "Python function call"
 
-        logging -> logs "Writes"
-        metrics -> prometheus "Exposes metrics to"
+        logging -> logs "Writes" "File I/O"
+        metrics -> prometheus "Exposes metrics to" "HTTP / Prometheus exposition format"
     }
 
     views {
@@ -107,5 +117,9 @@ workspace "Schwinn Workout Application" "Architecture model for the Schwinn work
         }
 
         theme default
+    }
+
+    configuration {
+        scope softwaresystem
     }
 }

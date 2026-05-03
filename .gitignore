@@ -43,3 +43,8 @@ app/logs/
 node_modules/
 test-results/
 playwright-report/
+
+# documentation
+docs/_build/
+docs/architecture/structurizr/.structurizr/index/
+docs/architecture/structurizr/.structurizr/logs/
