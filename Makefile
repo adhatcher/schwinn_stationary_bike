@@ -19,7 +19,7 @@ test:
 	$(UV) run pytest -q
 
 coverage:
-	$(UV) run pytest --cov=app.app --cov-report=term-missing --cov-report=xml
+	$(UV) run pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=95
 
 security:
 	$(UV) run pip-audit
