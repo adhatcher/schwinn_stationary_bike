@@ -2,9 +2,6 @@ name: Build and Deploy
 
 on:
   pull_request:
-  push:
-    branches-ignore:
-      - master
   workflow_run:
     workflows:
       - CI
@@ -19,7 +16,7 @@ env:
 
 jobs:
   build-only:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
