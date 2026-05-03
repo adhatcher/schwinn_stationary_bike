@@ -8,7 +8,7 @@ import os
 import secrets
 import sqlite3
 import smtplib
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from email.message import EmailMessage
 from io import BytesIO, StringIO
 from logging.handlers import RotatingFileHandler
@@ -19,14 +19,12 @@ from urllib.parse import urlencode
 
 import pandas as pd
 import plotly.graph_objects as go
-from fastapi import FastAPI, File, Form, Request, Response, UploadFile
+from fastapi import File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from PIL import Image, UnidentifiedImageError
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
-from starlette.middleware.sessions import SessionMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from werkzeug.security import check_password_hash, generate_password_hash
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -68,6 +66,7 @@ def env_first(*names: str, default: str = "") -> str:
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data"))).resolve()
 DAT_FILE = Path(os.getenv("DAT_FILE", str(DATA_DIR / "AARON.DAT"))).resolve()
 HISTORY_FILE = Path(os.getenv("HISTORY_FILE", str(DATA_DIR / "Workout_History.csv"))).resolve()
@@ -109,18 +108,6 @@ ADMIN_ROLE = "admin"
 USER_ROLE = "user"
 VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    init_auth_db()
-    yield
-
-
-app = FastAPI(title="Schwinn", version="1.0.0", lifespan=lifespan)
-app.secret_key = secret_key
-app.logger = logging.getLogger("schwinn")
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 class PasswordResetTokenError(RuntimeError):
@@ -140,33 +127,13 @@ GRAPHABLE_FIELDS = [name for name in COLUMN_NAMES if name != "Workout_Date"]
 DAT_IMPORT_ERROR_MESSAGE = "Unable to parse the uploaded DAT file. Check the file contents and try again."
 HISTORY_IMPORT_ERROR_MESSAGE = "Unable to import the historical CSV file. Verify the file format and try again."
 
-REQUEST_COUNT = Counter(
-    "schwinn_http_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status_code"],
-)
-REQUEST_LATENCY = Histogram(
-    "schwinn_http_request_duration_seconds",
-    "HTTP request latency in seconds",
-    ["method", "endpoint"],
-)
-CHARTS_GENERATED = Counter(
-    "schwinn_charts_generated_total",
-    "Total charts generated",
-)
-CHART_GENERATION_LATENCY = Histogram(
-    "schwinn_chart_generation_duration_seconds",
-    "Time spent generating chart HTML",
-)
-FILE_IMPORT_LATENCY = Histogram(
-    "schwinn_file_import_duration_seconds",
-    "Time spent importing DAT files",
-    ["source"],
-)
-AUTH_EVENT_COUNT = Counter(
-    "schwinn_auth_events_total",
-    "Authentication and account management events",
-    ["action", "result"],
+from app.bootstrap.metrics import (
+    AUTH_EVENT_COUNT,
+    CHART_GENERATION_LATENCY,
+    CHARTS_GENERATED,
+    FILE_IMPORT_LATENCY,
+    REQUEST_COUNT,
+    REQUEST_LATENCY,
 )
 
 
@@ -200,8 +167,6 @@ def configure_logging() -> None:
     werkzeug_logger.handlers = [file_handler, stream_handler]
     werkzeug_logger.propagate = False
 
-
-configure_logging()
 
 
 def audit_auth_event(action: str, email: str, result: str, *, actor_email: str = "", details: str = "") -> None:
@@ -993,7 +958,6 @@ PUBLIC_PATHS = {
 BOOTSTRAP_ALLOWED_PATHS = {"/healthz", "/metrics", "/setup-admin"}
 
 
-@app.middleware("http")
 async def auth_and_metrics_middleware(request: Request, call_next):
     request.state.request_start = perf_counter()
     if "PYTEST_CURRENT_TEST" in os.environ and "x-test-user-id" in request.headers:
@@ -1023,26 +987,15 @@ async def auth_and_metrics_middleware(request: Request, call_next):
     return response
 
 
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=secret_key,
-    https_only=SESSION_COOKIE_SECURE,
-    same_site="lax",
-    session_cookie="session",
-)
 
-
-@app.get("/healthz", name="healthz")
 def healthz():
     return {"status": "ok"}
 
 
-@app.get("/metrics", name="metrics")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.get("/login", response_class=HTMLResponse, name="login")
 def login_get(request: Request):
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
@@ -1059,7 +1012,6 @@ def login_get(request: Request):
     )
 
 
-@app.post("/login", response_class=HTMLResponse, name="login_post")
 def login_post(request: Request, email: str = Form(""), password: str = Form("")):
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
@@ -1086,7 +1038,6 @@ def login_post(request: Request, email: str = Form(""), password: str = Form("")
     )
 
 
-@app.get("/register", response_class=HTMLResponse, name="register")
 def register_get(request: Request):
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
@@ -1097,7 +1048,6 @@ def register_get(request: Request):
     return render(request, "register.html", {"message": "", "email": "", "name": ""})
 
 
-@app.post("/register", response_class=HTMLResponse, name="register_post")
 def register_post(
     request: Request,
     name: str = Form(""),
@@ -1134,14 +1084,12 @@ def register_post(
     return render(request, "register.html", {"message": message, "email": normalized_email, "name": normalized_name})
 
 
-@app.get("/forgot-password", response_class=HTMLResponse, name="forgot_password")
 def forgot_password_get(request: Request):
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     return render(request, "forgot_password.html", {"message": "", "email": ""})
 
 
-@app.post("/forgot-password", response_class=HTMLResponse, name="forgot_password_post")
 def forgot_password_post(request: Request, email: str = Form("")):
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
@@ -1165,7 +1113,6 @@ def forgot_password_post(request: Request, email: str = Form("")):
     return render(request, "forgot_password.html", {"message": "If that email is registered, a password reset link has been sent.", "email": ""})
 
 
-@app.get("/reset-password/{token}", response_class=HTMLResponse, name="reset_password")
 def reset_password_get(request: Request, token: str):
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
@@ -1176,7 +1123,6 @@ def reset_password_get(request: Request, token: str):
     return render(request, "reset_password.html", {"message": "", "token": token, "reset_link_valid": True, "reset_email": str(user["email"])})
 
 
-@app.post("/reset-password/{token}", response_class=HTMLResponse, name="reset_password_post")
 def reset_password_post(
     request: Request,
     token: str,
@@ -1211,7 +1157,6 @@ def reset_password_post(
     return render(request, "reset_password.html", {"message": message, "token": token, "reset_link_valid": True, "reset_email": str(user["email"])})
 
 
-@app.get("/logout", name="logout")
 def logout(request: Request):
     user = current_user(request)
     logout_current_user(request)
@@ -1220,7 +1165,6 @@ def logout(request: Request):
     return redirect_to(route_url(request, "setup_admin" if not admin_exists() else "login", message="You have been signed out."))
 
 
-@app.get("/account/avatar", name="account_avatar")
 def account_avatar(request: Request):
     user = current_user(request)
     if user is None or not user_has_avatar(user):
@@ -1242,7 +1186,6 @@ def account_context(message: str = "", message_type: str = "", avatar_size: int 
     }
 
 
-@app.get("/account", response_class=HTMLResponse, name="account")
 def account_get(request: Request):
     return render(
         request,
@@ -1251,7 +1194,6 @@ def account_get(request: Request):
     )
 
 
-@app.post("/account", response_class=HTMLResponse, name="account_post")
 async def account_post(
     request: Request,
     action: str = Form(""),
@@ -1367,7 +1309,6 @@ def update_admin_setup(
     )
 
 
-@app.get("/setup-admin", response_class=HTMLResponse, name="setup_admin")
 def setup_admin_get(request: Request):
     current = current_user(request)
     if admin_exists():
@@ -1379,7 +1320,6 @@ def setup_admin_get(request: Request):
     return render(request, "setup_admin.html", setup_admin_context("", "", "", "", False, False))
 
 
-@app.post("/setup-admin", response_class=HTMLResponse, name="setup_admin_post")
 def setup_admin_post(
     request: Request,
     first_name: str = Form(""),
@@ -1447,7 +1387,6 @@ def admin_required(request: Request):
     return None
 
 
-@app.get("/admin", response_class=HTMLResponse, name="admin_dashboard")
 def admin_dashboard(request: Request):
     guard = admin_required(request)
     if guard is not None:
@@ -1455,7 +1394,6 @@ def admin_dashboard(request: Request):
     return render(request, "admin.html", {"message": request.query_params.get("message", "")})
 
 
-@app.post("/admin", response_class=HTMLResponse, name="admin_dashboard_post")
 def admin_dashboard_post(request: Request, registration_enabled: str = Form("")):
     guard = admin_required(request)
     if guard is not None:
@@ -1464,7 +1402,6 @@ def admin_dashboard_post(request: Request, registration_enabled: str = Form(""))
     return render(request, "admin.html", {"message": message})
 
 
-@app.get("/admin/users", response_class=HTMLResponse, name="admin_users")
 def admin_users_get(request: Request):
     guard = admin_required(request)
     if guard is not None:
@@ -1472,7 +1409,6 @@ def admin_users_get(request: Request):
     return render(request, "admin_users.html", {"message": request.query_params.get("message", ""), "users": list_users(), "roles": sorted(VALID_ROLES)})
 
 
-@app.post("/admin/users", response_class=HTMLResponse, name="admin_users_post")
 def admin_users_post(
     request: Request,
     action: str = Form(""),
@@ -1557,7 +1493,6 @@ def admin_users_post(
     return render(request, "admin_users.html", {"message": message, "users": list_users(), "roles": sorted(VALID_ROLES)})
 
 
-@app.get("/download-history", name="download_history")
 def download_history():
     history_df = load_history_file(HISTORY_FILE)
     buffer = StringIO()
@@ -1569,7 +1504,6 @@ def download_history():
     )
 
 
-@app.get("/api/grafana/workouts", name="grafana_workouts")
 def grafana_workouts(request: Request):
     start_date = request.query_params.get("from", "") or request.query_params.get("start_date", "")
     end_date = request.query_params.get("to", "") or request.query_params.get("end_date", "")
@@ -1589,7 +1523,6 @@ def grafana_workouts(request: Request):
     return points
 
 
-@app.get("/api/grafana/summary", name="grafana_summary")
 def grafana_summary(request: Request):
     start_date = request.query_params.get("from", "") or request.query_params.get("start_date", "")
     end_date = request.query_params.get("to", "") or request.query_params.get("end_date", "")
@@ -1616,14 +1549,12 @@ def grafana_summary(request: Request):
     return summary
 
 
-@app.get("/", response_class=HTMLResponse, name="welcome")
 def welcome(request: Request):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     historical_data = load_history_file(HISTORY_FILE)
     return render(request, "welcome.html", build_page_context(historical_data))
 
 
-@app.get("/workout-performance", response_class=HTMLResponse, name="workout_performance")
 def workout_performance(request: Request):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = request.query_params.get("message", "")
@@ -1658,14 +1589,12 @@ def workout_performance(request: Request):
     )
 
 
-@app.get("/upload-workout", response_class=HTMLResponse, name="upload_workout")
 def upload_workout_get(request: Request):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     historical_data = load_history_file(HISTORY_FILE)
     return render(request, "upload_workout.html", {"message": "", **build_page_context(historical_data)})
 
 
-@app.post("/upload-workout", response_class=HTMLResponse, name="upload_workout_post")
 async def upload_workout_post(request: Request, dat_file: UploadFile | None = File(None)):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = ""
@@ -1696,14 +1625,12 @@ async def upload_workout_post(request: Request, dat_file: UploadFile | None = Fi
     return render(request, "upload_workout.html", {"message": message, **build_page_context(historical_data)})
 
 
-@app.get("/upload-history", response_class=HTMLResponse, name="upload_history")
 def upload_history_get(request: Request):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     historical_data = load_history_file(HISTORY_FILE)
     return render(request, "upload_history.html", {"message": "", **build_page_context(historical_data)})
 
 
-@app.post("/upload-history", response_class=HTMLResponse, name="upload_history_post")
 async def upload_history_post(request: Request, history_csv_file: UploadFile | None = File(None)):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = ""
@@ -1726,90 +1653,15 @@ async def upload_history_post(request: Request, history_csv_file: UploadFile | N
     return render(request, "upload_history.html", {"message": message, **build_page_context(historical_data)})
 
 
+from app.bootstrap.factory import create_app
+from app.bootstrap.testing import install_test_client
+
+
+app = create_app()
+install_test_client(app)
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("app.app:app", host=HOST, port=PORT, reload=False)
-
-
-class _CompatResponse:
-    def __init__(self, response):
-        self._response = response
-        self.status_code = response.status_code
-        self.headers = response.headers
-
-    def get_json(self):
-        return self._response.json()
-
-    def get_data(self, *, as_text: bool = False):
-        return self._response.text if as_text else self._response.content
-
-
-class _CompatSessionTransaction:
-    def __init__(self, client: "_CompatTestClient"):
-        self.client = client
-
-    def __enter__(self):
-        return self.client._session
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-class _CompatTestClient:
-    def __init__(self, fastapi_app: FastAPI):
-        from fastapi.testclient import TestClient
-
-        self._client = TestClient(fastapi_app, follow_redirects=False)
-        self._session: dict[str, int] = {}
-
-    def session_transaction(self):
-        return _CompatSessionTransaction(self)
-
-    def get(self, url: str, **kwargs):
-        return self._request("GET", url, **kwargs)
-
-    def post(self, url: str, **kwargs):
-        return self._request("POST", url, **kwargs)
-
-    def _request(self, method: str, url: str, **kwargs):
-        kwargs.pop("content_type", None)
-        follow_redirects = kwargs.pop("follow_redirects", False)
-        headers = dict(kwargs.pop("headers", {}) or {})
-        if USER_SESSION_KEY in self._session:
-            headers["x-test-user-id"] = str(self._session[USER_SESSION_KEY])
-
-        data = kwargs.pop("data", None)
-        files = kwargs.pop("files", None)
-        if data is not None and files is None:
-            form_data = {}
-            converted_files = {}
-            for key, value in dict(data).items():
-                if isinstance(value, tuple) and len(value) >= 2:
-                    file_obj, filename = value[:2]
-                    converted_files[key] = (filename, file_obj)
-                else:
-                    form_data[key] = value
-            data = form_data
-            files = converted_files or None
-
-        response = self._client.request(
-            method,
-            url,
-            data=data,
-            files=files,
-            headers=headers,
-            follow_redirects=follow_redirects,
-            **kwargs,
-        )
-        request_path = url.split("?", 1)[0]
-        if request_path == "/logout" or (request_path.startswith("/reset-password/") and response.status_code in {302, 303}):
-            self._session.clear()
-        return _CompatResponse(response)
-
-
-def _test_client():
-    return _CompatTestClient(app)
-
-
-app.test_client = _test_client
