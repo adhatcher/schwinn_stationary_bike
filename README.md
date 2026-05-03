@@ -201,12 +201,20 @@ Historical data is persisted in `/app/data/Workout_History.csv`.
 
 ## Architecture
 
-Architecture diagrams are generated from the diagram sources under `docs/architecture/` and published as dark-theme images under `docs/images/`.
+Architecture diagrams are generated from the diagram sources under `docs/architecture/` and published as dark-theme images under `docs/images/`.  Can be created using
+
+```bash
+docker run -it --rm \
+  -p 8080:8080 \
+  -v "$PWD/docs/architecture/structurizr:/usr/local/structurizr" \
+  structurizr/structurizr local
+  ```
+
+Then Open `http://localhost:8080`
 
 ### C1 System Context diagram
 
 ![C1 System Context diagram](docs/images/c1-system-context-dark.svg)
-
 
 ![C1 System Context diagram](docs/images/c1-system-context-dark-key.svg)
 
