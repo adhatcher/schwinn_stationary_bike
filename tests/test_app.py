@@ -282,6 +282,16 @@ def test_metrics_endpoint_exposes_prometheus_output() -> None:
     assert "schwinn_http_request_duration_seconds" in text
 
 
+def test_metrics_bootstrap_reuses_existing_prometheus_collectors() -> None:
+    import app.bootstrap.metrics as metrics
+
+    request_count = metrics.REQUEST_COUNT
+
+    reloaded_metrics = importlib.reload(metrics)
+
+    assert reloaded_metrics.REQUEST_COUNT is request_count
+
+
 def test_download_history_returns_csv(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"

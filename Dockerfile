@@ -21,7 +21,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HISTORY_FILE=/app/data/Workout_History.csv
 
 COPY --from=builder /app/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip==26.1 \
+    && python -m pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt
 
 COPY app ./app
 
