@@ -372,6 +372,44 @@ def test_welcome_page_shows_days_since_last_workout(monkeypatch, tmp_path) -> No
     assert "http://testserver/static/styles.css" not in text
 
 
+def test_welcome_page_shows_last_30_day_workout_rows(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data(
+        [
+            _sample_workout(2, 15, 2026, 0, 30, distance=9.0),
+            _sample_workout(3, 1, 2026, 0, 20, distance=1.0),
+            _sample_workout(3, 5, 2026, 1, 5, distance=2.25),
+            _sample_workout(3, 10, 2026, 0, 45, distance=3.5),
+        ]
+    )
+    df.to_csv(history_file, index=False)
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
+
+    client = _client()
+    _log_in(client)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    text = response.text
+    assert "Workout Date" in text
+    assert "Workout Time" in text
+    assert "Average Speed" in text
+    assert "Total Calories" in text
+    assert text.index("2026-03-10") < text.index("2026-03-05")
+    assert text.index("2026-03-05") < text.index("2026-03-01")
+    assert "2026-02-15" not in text
+    assert "45m" in text
+    assert "1h 5m" in text
+    assert "20m" in text
+    assert "3.5" in text
+    assert "2.2" in text
+    assert "1" in text
+    assert "14.2" in text
+    assert "250" in text
+
+
 def test_summarize_window_includes_current_day_in_last_30_days() -> None:
     df = app.load_workout_data(
         [

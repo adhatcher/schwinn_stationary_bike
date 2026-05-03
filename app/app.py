@@ -932,6 +932,33 @@ def build_summary_cards(df: pd.DataFrame) -> dict[str, dict[str, str]]:
     }
 
 
+def build_last_30_day_workouts(df: pd.DataFrame, *, today: pd.Timestamp | None = None) -> list[dict[str, str]]:
+    """Build display rows for workouts included in the last 30-day summary."""
+    if df.empty:
+        return []
+
+    if today is None:
+        today = current_day()
+    else:
+        today = pd.to_datetime(today).normalize()
+
+    window_start = today - pd.Timedelta(days=29)
+    recent_df = df[(df["Workout_Date"] >= window_start) & (df["Workout_Date"] <= today)]
+    recent_df = recent_df.sort_values(by=["Workout_Date"], ascending=False)
+    rows = []
+    for _, workout in recent_df.iterrows():
+        rows.append(
+            {
+                "date": pd.to_datetime(workout["Workout_Date"]).date().isoformat(),
+                "time": format_minutes(int(pd.to_numeric(workout["Workout_Time"], errors="coerce"))),
+                "distance": format_distance(float(pd.to_numeric(workout["Distance"], errors="coerce"))),
+                "average_speed": format_distance(float(pd.to_numeric(workout["Avg_Speed"], errors="coerce"))),
+                "total_calories": format_distance(float(pd.to_numeric(workout["Total_Calories"], errors="coerce"))),
+            }
+        )
+    return rows
+
+
 def build_page_context(historical_data: pd.DataFrame) -> dict[str, object]:
     """Build shared page context from workout history."""
     min_date = ""
@@ -956,6 +983,7 @@ def build_page_context(historical_data: pd.DataFrame) -> dict[str, object]:
         "last_workout_date": last_workout_date,
         "days_since_last_workout": days_since_last_workout,
         "summary_cards": build_summary_cards(historical_data),
+        "last_30_day_workouts": build_last_30_day_workouts(historical_data),
     }
 
 

@@ -728,6 +728,28 @@ th {
   color: var(--accent-dark);
 }
 
+.recent-workouts {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(19, 24, 38, 0.06);
+}
+
+.recent-workouts table {
+  min-width: 680px;
+}
+
+.recent-workouts th,
+.recent-workouts td {
+  padding: 11px 14px;
+}
+
+.recent-workouts td {
+  font-weight: 600;
+  color: #202738;
+}
+
 .form-card {
   max-width: 720px;
 }

@@ -46,6 +46,32 @@
           <div class="summary-value">{{ summary_cards.last_30_days.time }}</div>
         </article>
       </div>
+      {% if last_30_day_workouts %}
+        <div class="recent-workouts">
+          <table>
+            <thead>
+              <tr>
+                <th>Workout Date</th>
+                <th>Workout Time</th>
+                <th>Distance</th>
+                <th>Average Speed</th>
+                <th>Total Calories</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for workout in last_30_day_workouts %}
+                <tr>
+                  <td>{{ workout.date }}</td>
+                  <td>{{ workout.time }}</td>
+                  <td>{{ workout.distance }}</td>
+                  <td>{{ workout.average_speed }}</td>
+                  <td>{{ workout.total_calories }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
     </section>
 
     <section class="summary-section">
