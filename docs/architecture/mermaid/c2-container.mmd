@@ -1,0 +1,29 @@
+flowchart LR
+    user["User<br/><br/>Views workouts, charts,<br/>ride history, and stats"]
+
+    subgraph schwinn["Schwinn Workout Application"]
+        web["Web UI<br/><br/>HTML / CSS / JavaScript"]
+        api["Python Web Application<br/><br/>FastAPI / Python"]
+        data[("Workout Data Store<br/><br/>CSV / SQLite")]
+        logs[("Application Logs<br/><br/>Rotating log files")]
+        metrics["Metrics Endpoint<br/><br/>/metrics"]
+    end
+
+    docker["Docker Runtime"]
+    prometheus["Prometheus"]
+    strava["Strava API"]
+    mapmyride["MapMyRide"]
+
+    user -->|"HTTP / HTTPS"| web
+    web -->|"HTTP / JSON"| api
+
+    api -->|"Reads / writes"| data
+    api -->|"Writes"| logs
+    api -->|"Exposes"| metrics
+
+    prometheus -->|"Scrapes"| metrics
+
+    api -->|"Uploads rides"| strava
+    api -.->|"Future integration"| mapmyride
+
+    docker -->|"Runs"| api

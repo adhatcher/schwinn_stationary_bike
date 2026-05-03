@@ -1,0 +1,65 @@
+flowchart TB
+    user["User"]
+
+    subgraph app["Schwinn Python Web Application"]
+
+        main["Application Entry Point<br/>app/main.py or app/app.py"]
+
+        subgraph core["core/"]
+            config["Configuration<br/>core/config.py"]
+            logging["Logging<br/>core/logging.py"]
+            metrics["Metrics<br/>core/metrics.py"]
+        end
+
+        subgraph auth["auth/"]
+            auth_routes["Auth Routes<br/>auth/routes.py"]
+            auth_service["Auth Service<br/>auth/service.py"]
+            auth_db["Auth Data Access<br/>auth/db.py"]
+            auth_models["Auth Models<br/>auth/models.py"]
+        end
+
+        subgraph workouts["workouts/"]
+            workout_routes["Workout Routes<br/>workouts/routes.py"]
+            parsing["Workout Parser<br/>workouts/parsing.py"]
+            history["Workout History Service<br/>workouts/history.py"]
+            charts["Chart Generator<br/>workouts/charts.py"]
+        end
+
+        templates["Templates<br/>app/templates/"]
+        static["Static Assets<br/>app/static/"]
+    end
+
+    workout_data[("Workout History Data<br/>Workout_History.csv / SQLite")]
+    app_logs[("Application Logs")]
+    prometheus["Prometheus"]
+    strava["Strava API"]
+
+    user -->|"Views pages / submits requests"| workout_routes
+    user -->|"Authenticates"| auth_routes
+
+    main --> config
+    main --> logging
+    main --> metrics
+    main --> auth_routes
+    main --> workout_routes
+    main --> templates
+    main --> static
+
+    auth_routes --> auth_service
+    auth_service --> auth_db
+    auth_service --> auth_models
+
+    workout_routes --> history
+    workout_routes --> parsing
+    workout_routes --> charts
+    workout_routes --> templates
+    workout_routes --> static
+
+    parsing --> workout_data
+    history --> workout_data
+    charts --> history
+
+    logging --> app_logs
+    metrics --> prometheus
+
+    history -.-> strava

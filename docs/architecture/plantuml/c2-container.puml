@@ -1,0 +1,29 @@
+@startuml
+!include <C4/C4_Container>
+
+title Schwinn Workout Application - C2 Container Diagram
+
+Person(user, "User", "Views workout history, charts, ride metrics, and manages ride data")
+
+System_Boundary(schwinn, "Schwinn Workout Application") {
+    Container(web, "Web UI", "HTML/CSS/JavaScript", "Browser-based interface for viewing workouts, charts, and statistics")
+    Container(api, "Python Web Application", "FastAPI / Python", "Serves pages and APIs, parses workout data, calculates metrics, generates charts, and exposes metrics")
+    ContainerDb(data, "Workout Data Store", "CSV / SQLite", "Stores imported workout history and calculated ride metadata")
+    ContainerDb(logs, "Application Logs", "Rotating log files", "Stores application logs for troubleshooting and auditability")
+}
+
+System_Ext(prometheus, "Prometheus", "Scrapes application metrics")
+System_Ext(strava, "Strava API", "Optional external ride upload destination")
+System_Ext(mapmyride, "MapMyRide", "Potential future external ride upload destination")
+System_Ext(docker, "Docker Runtime", "Runs the Schwinn application container")
+
+Rel(user, web, "Uses", "HTTP/HTTPS")
+Rel(web, api, "Calls", "HTTP/JSON")
+Rel(api, data, "Reads/writes workout history", "File I/O / SQL")
+Rel(api, logs, "Writes logs", "File I/O")
+Rel(prometheus, api, "Scrapes /metrics", "HTTP")
+Rel(api, strava, "Uploads rides", "HTTPS/API")
+Rel(api, mapmyride, "Potential future integration", "HTTPS/API")
+Rel(docker, api, "Runs containerized app")
+
+@enduml

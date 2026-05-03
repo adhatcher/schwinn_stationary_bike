@@ -198,3 +198,36 @@ PORT=9090 DATA_DIR=/app/custom-data docker compose up --build
 5. Click **Refresh Dashboard**.
 
 Historical data is persisted in `/app/data/Workout_History.csv`.
+
+## Architecture
+
+Architecture diagrams are stored under `docs/architecture/`.
+
+### Canonical C4 model
+
+The canonical architecture model is written in Structurizr DSL:
+
+- `docs/architecture/structurizr/workspace.dsl`
+
+This is the source of truth for the C4 model.
+
+### C4-PlantUML diagrams
+
+Kroki-friendly C4 diagrams are stored here:
+
+- `docs/architecture/plantuml/c2-container.puml`
+- `docs/architecture/plantuml/c3-component.puml`
+
+These use C4-PlantUML syntax and are intended for rendering through PlantUML or Kroki.
+
+### Mermaid preview diagrams
+
+Mermaid-compatible preview diagrams are stored here:
+
+- `docs/architecture/mermaid/c2-container.mmd`
+- `docs/architecture/mermaid/c3-component.mmd`
+- `docs/architecture/mermaid/c4-code.mmd`
+
+These use standard Mermaid `flowchart` syntax so they are easier to preview in VS Code, GitHub, and Mermaid-based renderers.
+
+The Mermaid diagrams are not the canonical C4 source. They are lightweight preview diagrams.
