@@ -23,12 +23,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=builder /app/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
-COPY app/app.py ./app.py
-COPY app/templates ./templates
-COPY app/static ./static
+COPY app ./app
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD sh -c 'wget -q -O /dev/null "http://127.0.0.1:${PORT:-8080}/healthz" || exit 1'
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 2 app:app"]
+CMD ["sh", "-c", "uvicorn app.app:app --host 0.0.0.0 --port ${PORT:-8080}"]

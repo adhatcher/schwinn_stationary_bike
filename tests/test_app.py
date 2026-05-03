@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import asyncio
 import json
 import os
 from io import BytesIO
@@ -8,11 +9,19 @@ import textwrap
 from pathlib import Path
 
 import pandas as pd
-from flask import request
 from PIL import Image
-from werkzeug.datastructures import FileStorage
+from starlette.datastructures import QueryParams
 
 app = importlib.import_module("app.app")
+
+
+class _UploadFile:
+    def __init__(self, stream: BytesIO, filename: str):
+        self._stream = stream
+        self.filename = filename
+
+    async def read(self) -> bytes:
+        return self._stream.read()
 
 
 def _sample_workout(month: int, day: int, year: int, hours: int, minutes: int, distance: float = 5.5) -> dict:
@@ -182,8 +191,8 @@ def test_read_dat_from_upload_parses_file_storage() -> None:
     body = '{"workoutDate":{"Month":1,"Day":2,"Year":2026},"distance":3.2,"averageSpeed":14.2,' \
            '"totalWorkoutTime":{"Hours":0,"Minutes":40},"totalCalories":200,"avgHeartRate":130,' \
            '"avgRpm":75,"avgLevel":5}'
-    upload = FileStorage(stream=BytesIO(f"{header}\n{body}".encode("utf-8")), filename="AARON.DAT")
-    df = app.read_dat_from_upload(upload)
+    upload = _UploadFile(BytesIO(f"{header}\n{body}".encode("utf-8")), "AARON.DAT")
+    df = asyncio.run(app.read_dat_from_upload(upload))
     assert len(df) == 1
     assert float(df.loc[0, "Distance"]) == 3.2
 
@@ -205,9 +214,9 @@ def test_load_history_file_returns_empty_for_header_only_csv(tmp_path) -> None:
 
 def test_read_history_csv_from_upload_raises_on_missing_columns() -> None:
     csv_text = "Workout_Date,Distance\n2026-01-01,2.0\n"
-    upload = FileStorage(stream=BytesIO(csv_text.encode("utf-8")), filename="bad.csv")
+    upload = _UploadFile(BytesIO(csv_text.encode("utf-8")), "bad.csv")
     try:
-        app.read_history_csv_from_upload(upload)
+        asyncio.run(app.read_history_csv_from_upload(upload))
     except ValueError as exc:
         assert "Missing required columns" in str(exc)
     else:
@@ -1114,8 +1123,7 @@ def test_send_password_reset_email_uses_ssl_without_starttls(monkeypatch) -> Non
 
 def test_build_reset_link_uses_public_base_url(monkeypatch) -> None:
     monkeypatch.setattr(app, "PUBLIC_BASE_URL", "https://schwinn.example.com")
-    with app.app.test_request_context():
-        assert app.build_reset_link("token-123") == "https://schwinn.example.com/reset-password/token-123"
+    assert app.build_reset_link("token-123") == "https://schwinn.example.com/reset-password/token-123"
 
 
 def test_summarize_window_defaults_today_when_not_provided(monkeypatch) -> None:
@@ -1132,8 +1140,7 @@ def test_format_minutes_formats_hour_and_minutes_variants() -> None:
 
 
 def test_parse_field_selection_accepts_field_array_variant() -> None:
-    with app.app.test_request_context("/?field[]=Distance&field[]=Avg_Speed"):
-        assert app.parse_field_selection(request.args) == ["Distance", "Avg_Speed"]
+    assert app.parse_field_selection(QueryParams("field[]=Distance&field[]=Avg_Speed")) == ["Distance", "Avg_Speed"]
 
 
 def test_login_redirects_authenticated_user(monkeypatch, tmp_path) -> None:

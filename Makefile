@@ -34,7 +34,7 @@ git-hooks:
 precommit: local-test
 
 run:
-	$(UV) run python app/app.py
+	$(UV) run uvicorn app.app:app --host 0.0.0.0 --port $(PORT)
 
 build: docker-build
 
