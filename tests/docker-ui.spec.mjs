@@ -18,8 +18,14 @@ test("docker image serves core authenticated screens", async ({ page, request })
     }, { timeout: 30_000 })
     .toEqual({ status: "ok" });
 
+  const stylesheetResponse = await request.get("/static/styles.css");
+  expect(stylesheetResponse.status()).toBe(200);
+  await expect(stylesheetResponse.text()).resolves.toContain("font-family");
+
   await page.goto("/");
   await expect(page).toHaveTitle(/Create Admin Account|Schwinn Welcome/);
+  await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute("href", "/static/styles.css");
+  await expect(page.locator("body")).toHaveCSS("font-family", /Inter/);
 
   if (await page.getByRole("heading", { name: "Create Admin Account" }).isVisible()) {
     await page.getByLabel("First Name").fill("Admin");

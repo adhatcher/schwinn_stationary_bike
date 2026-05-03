@@ -66,7 +66,17 @@ def env_first(*names: str, default: str = "") -> str:
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def template_url_for(request: Request, name: str, **path_params: object) -> str:
+    return request.url_for(name, **path_params).path
+
+
+def template_url_context(request: Request) -> dict[str, object]:
+    return {"url_for": lambda name, **path_params: template_url_for(request, name, **path_params)}
+
+
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR), context_processors=[template_url_context])
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data"))).resolve()
 DAT_FILE = Path(os.getenv("DAT_FILE", str(DATA_DIR / "AARON.DAT"))).resolve()
 HISTORY_FILE = Path(os.getenv("HISTORY_FILE", str(DATA_DIR / "Workout_History.csv"))).resolve()
@@ -162,10 +172,10 @@ def configure_logging() -> None:
     app.logger.addHandler(stream_handler)
     app.logger.propagate = False
 
-    werkzeug_logger = logging.getLogger("werkzeug")
-    werkzeug_logger.setLevel(logging.INFO)
-    werkzeug_logger.handlers = [file_handler, stream_handler]
-    werkzeug_logger.propagate = False
+    uvicorn_logger = logging.getLogger("uvicorn")
+    uvicorn_logger.setLevel(logging.INFO)
+    uvicorn_logger.handlers = [file_handler, stream_handler]
+    uvicorn_logger.propagate = False
 
 
 
@@ -960,8 +970,6 @@ BOOTSTRAP_ALLOWED_PATHS = {"/healthz", "/metrics", "/setup-admin"}
 
 async def auth_and_metrics_middleware(request: Request, call_next):
     request.state.request_start = perf_counter()
-    if "PYTEST_CURRENT_TEST" in os.environ and "x-test-user-id" in request.headers:
-        request.session[USER_SESSION_KEY] = int(request.headers["x-test-user-id"])
 
     init_auth_db()
     path = request.url.path
@@ -1654,11 +1662,9 @@ async def upload_history_post(request: Request, history_csv_file: UploadFile | N
 
 
 from app.bootstrap.factory import create_app
-from app.bootstrap.testing import install_test_client
 
 
 app = create_app()
-install_test_client(app)
 
 
 if __name__ == "__main__":
