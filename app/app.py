@@ -8,19 +8,25 @@ import os
 import secrets
 import sqlite3
 import smtplib
-from contextlib import contextmanager
-from io import BytesIO, StringIO
+from contextlib import asynccontextmanager, contextmanager
 from email.message import EmailMessage
+from io import BytesIO, StringIO
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
 from typing import Iterable
+from urllib.parse import urlencode
+
 import pandas as pd
 import plotly.graph_objects as go
-from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
+from fastapi import FastAPI, File, Form, Request, Response, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from PIL import Image, UnidentifiedImageError
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from starlette.middleware.sessions import SessionMiddleware
 from werkzeug.security import check_password_hash, generate_password_hash
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -46,15 +52,10 @@ def load_dotenv_file(dotenv_path: Path) -> None:
 
 load_dotenv_file(ROOT_DIR / ".env")
 
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB upload cap
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}
 secret_key = os.getenv("SECRET_KEY")
 if not secret_key:
     secret_key = secrets.token_urlsafe(64)
-app.secret_key = secret_key
 
 
 def env_first(*names: str, default: str = "") -> str:
@@ -65,6 +66,8 @@ def env_first(*names: str, default: str = "") -> str:
     return default
 
 BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data"))).resolve()
 DAT_FILE = Path(os.getenv("DAT_FILE", str(DATA_DIR / "AARON.DAT"))).resolve()
 HISTORY_FILE = Path(os.getenv("HISTORY_FILE", str(DATA_DIR / "Workout_History.csv"))).resolve()
@@ -105,6 +108,19 @@ BOOTSTRAP_ALLOWED_ENDPOINTS = {"healthz", "metrics", "setup_admin", "static"}
 ADMIN_ROLE = "admin"
 USER_ROLE = "user"
 VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_auth_db()
+    yield
+
+
+app = FastAPI(title="Schwinn", version="1.0.0", lifespan=lifespan)
+app.secret_key = secret_key
+app.logger = logging.getLogger("schwinn")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 class PasswordResetTokenError(RuntimeError):
@@ -338,10 +354,10 @@ def parse_avatar_size(raw_size: str) -> int:
     return max(AVATAR_SIZE_MIN_PX, min(requested_size, AVATAR_SIZE_MAX_PX))
 
 
-def process_avatar_upload(file_storage, *, requested_size: int = AVATAR_SIZE_DEFAULT_PX) -> bytes:
-    if not file_storage or not file_storage.filename:
+async def process_avatar_upload(upload_file: UploadFile | None, *, requested_size: int = AVATAR_SIZE_DEFAULT_PX) -> bytes:
+    if not upload_file or not upload_file.filename:
         raise ValueError("Choose an image file to upload.")
-    upload_bytes = file_storage.read()
+    upload_bytes = await upload_file.read()
     if not upload_bytes:
         raise ValueError("Choose an image file to upload.")
     if len(upload_bytes) > AVATAR_UPLOAD_MAX_BYTES:
@@ -573,12 +589,12 @@ def verify_password_reset_token(token: str, *, max_age: int | None = None) -> sq
     return get_user_by_email(str(email))
 
 
-def current_user():
-    return get_user_by_id(session.get(USER_SESSION_KEY))
+def current_user(request: Request) -> sqlite3.Row | None:
+    return get_user_by_id(request.session.get(USER_SESSION_KEY))
 
 
-def current_user_is_admin() -> bool:
-    user = current_user()
+def current_user_is_admin(request: Request) -> bool:
+    user = current_user(request)
     return bool(user and str(user["role"]) == ADMIN_ROLE)
 
 
@@ -586,13 +602,13 @@ def admin_email_is_verified(user) -> bool:
     return bool(user and str(user["role"]) == ADMIN_ROLE and int(user["email_verified"] or 0) == 1)
 
 
-def login_user(user: sqlite3.Row) -> None:
-    session.clear()
-    session[USER_SESSION_KEY] = int(user["id"])
+def login_user(request: Request, user: sqlite3.Row) -> None:
+    request.session.clear()
+    request.session[USER_SESSION_KEY] = int(user["id"])
 
 
-def logout_current_user() -> None:
-    session.clear()
+def logout_current_user(request: Request) -> None:
+    request.session.clear()
 
 
 def password_is_valid(password: str) -> bool:
@@ -641,22 +657,47 @@ def send_password_reset_email(email: str, reset_link: str) -> None:
         smtp.send_message(message)
 
 
-def build_reset_link(token: str) -> str:
+def build_reset_link(request: Request | str, token: str | None = None) -> str:
+    if token is None:
+        token = str(request)
+        if PUBLIC_BASE_URL:
+            return f"{PUBLIC_BASE_URL}/reset-password/{token}"
+        raise PasswordResetTokenError("Request is required when PUBLIC_BASE_URL is not configured.")
+    reset_path = request.url_for("reset_password", token=token).path
     if PUBLIC_BASE_URL:
-        return f"{PUBLIC_BASE_URL}{url_for('reset_password', token=token)}"
-    return url_for("reset_password", token=token, _external=True)
+        return f"{PUBLIC_BASE_URL}{reset_path}"
+    return str(request.url_for("reset_password", token=token))
 
 
-@app.context_processor
-def inject_template_context() -> dict[str, object]:
-    return {
-        "current_user": current_user(),
-        "display_user_name": display_user_name,
-        "user_has_avatar": user_has_avatar,
-        "user_initials": user_initials,
-        "registration_enabled": is_registration_enabled(),
-        "admin_exists": admin_exists(),
-    }
+def render(
+    request: Request,
+    template_name: str,
+    context: dict[str, object] | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    page_context = dict(context or {})
+    page_context.update(
+        {
+            "request": request,
+            "current_user": current_user(request),
+            "display_user_name": display_user_name,
+            "user_has_avatar": user_has_avatar,
+            "user_initials": user_initials,
+            "registration_enabled": is_registration_enabled(),
+            "admin_exists": admin_exists(),
+        }
+    )
+    return templates.TemplateResponse(request, template_name, page_context, status_code=status_code)
+
+
+def redirect_to(url: str, status_code: int = 302) -> RedirectResponse:
+    return RedirectResponse(url=url, status_code=status_code)
+
+
+def route_url(request: Request, name: str, **params: object) -> str:
+    path = request.url_for(name).path
+    clean_params = {key: value for key, value in params.items() if value is not None}
+    return f"{path}?{urlencode(clean_params, safe='@/')}" if clean_params else path
 
 
 def extract_json_objects(payload: str) -> list[dict]:
@@ -758,14 +799,14 @@ def read_dat_from_disk(dat_file: Path) -> pd.DataFrame:
     return load_workout_data(parse_dat_payload(raw_text))
 
 
-def read_dat_from_upload(file_storage) -> pd.DataFrame:
-    raw_bytes = file_storage.read()
+async def read_dat_from_upload(upload_file: UploadFile) -> pd.DataFrame:
+    raw_bytes = await upload_file.read()
     raw_text = raw_bytes.decode("utf-8", errors="ignore")
     return load_workout_data(parse_dat_payload(raw_text))
 
 
-def read_history_csv_from_upload(file_storage) -> pd.DataFrame:
-    upload_df = pd.read_csv(BytesIO(file_storage.read()))
+async def read_history_csv_from_upload(upload_file: UploadFile) -> pd.DataFrame:
+    upload_df = pd.read_csv(BytesIO(await upload_file.read()))
     missing_columns = [col for col in COLUMN_NAMES if col not in upload_df.columns]
     if missing_columns:
         raise ValueError(f"Missing required columns in historical CSV: {', '.join(missing_columns)}")
@@ -940,603 +981,624 @@ def build_chart(df: pd.DataFrame, fields: list[str]) -> str | None:
     return chart_html
 
 
-@app.before_request
-def start_timer() -> None:
-    g.request_start = perf_counter()
+PUBLIC_PATHS = {
+    "/healthz",
+    "/metrics",
+    "/setup-admin",
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/logout",
+}
+BOOTSTRAP_ALLOWED_PATHS = {"/healthz", "/metrics", "/setup-admin"}
 
 
-@app.before_request
-def require_login():
+@app.middleware("http")
+async def auth_and_metrics_middleware(request: Request, call_next):
+    request.state.request_start = perf_counter()
+    if "PYTEST_CURRENT_TEST" in os.environ and "x-test-user-id" in request.headers:
+        request.session[USER_SESSION_KEY] = int(request.headers["x-test-user-id"])
+
     init_auth_db()
-    endpoint = request.endpoint or ""
-    if not admin_exists() and endpoint not in BOOTSTRAP_ALLOWED_ENDPOINTS:
-        return redirect(url_for("setup_admin"))
-    if endpoint in PUBLIC_ENDPOINTS:
-        return None
-    if current_user() is not None:
-        return None
-    if request.path.startswith("/api/"):
-        return jsonify(error="Authentication required."), 401
-    return redirect(url_for("login", next=request.full_path[:-1] if request.full_path.endswith("?") else request.full_path))
+    path = request.url.path
 
+    if not admin_exists() and path not in BOOTSTRAP_ALLOWED_PATHS and not path.startswith("/static"):
+        response = redirect_to(route_url(request, "setup_admin"))
+    elif path.startswith("/static") or path in PUBLIC_PATHS or path.startswith("/reset-password/"):
+        response = await call_next(request)
+    elif current_user(request) is not None:
+        response = await call_next(request)
+    elif path.startswith("/api/"):
+        response = JSONResponse({"error": "Authentication required."}, status_code=401)
+    else:
+        next_path = path
+        if request.url.query:
+            next_path = f"{next_path}?{request.url.query}"
+        response = redirect_to(route_url(request, "login", next=next_path))
 
-@app.after_request
-def observe_request(response):
-    endpoint = request.endpoint or request.path
-    REQUEST_COUNT.labels(request.method, endpoint, str(response.status_code)).inc()
-    if hasattr(g, "request_start"):
-        REQUEST_LATENCY.labels(request.method, endpoint).observe(perf_counter() - g.request_start)
+    endpoint = request.scope.get("endpoint")
+    endpoint_name = getattr(endpoint, "__name__", path)
+    REQUEST_COUNT.labels(request.method, endpoint_name, str(response.status_code)).inc()
+    REQUEST_LATENCY.labels(request.method, endpoint_name).observe(perf_counter() - request.state.request_start)
     return response
 
 
-@app.route("/healthz", methods=["GET"])
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=secret_key,
+    https_only=SESSION_COOKIE_SECURE,
+    same_site="lax",
+    session_cookie="session",
+)
+
+
+@app.get("/healthz", name="healthz")
 def healthz():
-    return jsonify(status="ok")
+    return {"status": "ok"}
 
 
-@app.route("/metrics", methods=["GET"])
+@app.get("/metrics", name="metrics")
 def metrics():
-    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
+@app.get("/login", response_class=HTMLResponse, name="login")
+def login_get(request: Request):
     if not admin_exists():
-        return redirect(url_for("setup_admin"))
-    if current_user() is not None:
-        return redirect(url_for("welcome"))
-
-    message = request.args.get("message", "")
-    email = normalize_email(request.values.get("email", "") or request.args.get("email", ""))
-
-    if request.method == "POST":
-        email = normalize_email(request.form.get("email", ""))
-        password = request.form.get("password", "")
-        user = get_user_by_email(email)
-        if user and check_password_hash(str(user["password_hash"]), password):
-            login_user(user)
-            audit_auth_event("login", email, "success", details="user signed in")
-            if str(user["role"]) == ADMIN_ROLE and not admin_email_is_verified(user):
-                return redirect(url_for("setup_admin", verify="email"))
-            return redirect(url_for("welcome"))
-        audit_auth_event("login", email, "failure", details="invalid email or password")
-        message = "We couldn't sign you in with that email and password."
-
-    return render_template(
+        return redirect_to(route_url(request, "setup_admin"))
+    if current_user(request) is not None:
+        return redirect_to(route_url(request, "welcome"))
+    return render(
+        request,
         "login.html",
-        message=message,
-        email=email,
-        registration_enabled=is_registration_enabled(),
+        {
+            "message": request.query_params.get("message", ""),
+            "email": normalize_email(request.query_params.get("email", "")),
+            "registration_enabled": is_registration_enabled(),
+        },
     )
 
 
-@app.route("/register", methods=["GET", "POST"])
-def register():
+@app.post("/login", response_class=HTMLResponse, name="login_post")
+def login_post(request: Request, email: str = Form(""), password: str = Form("")):
     if not admin_exists():
-        return redirect(url_for("setup_admin"))
-    if current_user() is not None:
-        return redirect(url_for("welcome"))
+        return redirect_to(route_url(request, "setup_admin"))
+    if current_user(request) is not None:
+        return redirect_to(route_url(request, "welcome"))
+
+    normalized_email = normalize_email(email)
+    user = get_user_by_email(normalized_email)
+    if user and check_password_hash(str(user["password_hash"]), password):
+        login_user(request, user)
+        audit_auth_event("login", normalized_email, "success", details="user signed in")
+        if str(user["role"]) == ADMIN_ROLE and not admin_email_is_verified(user):
+            return redirect_to(route_url(request, "setup_admin", verify="email"))
+        return redirect_to(route_url(request, "welcome"))
+    audit_auth_event("login", normalized_email, "failure", details="invalid email or password")
+    return render(
+        request,
+        "login.html",
+        {
+            "message": "We couldn't sign you in with that email and password.",
+            "email": normalized_email,
+            "registration_enabled": is_registration_enabled(),
+        },
+    )
+
+
+@app.get("/register", response_class=HTMLResponse, name="register")
+def register_get(request: Request):
+    if not admin_exists():
+        return redirect_to(route_url(request, "setup_admin"))
+    if current_user(request) is not None:
+        return redirect_to(route_url(request, "welcome"))
     if not is_registration_enabled():
-        return render_template("register.html", message="New user registration is currently disabled.", email="", name=""), 403
-
-    message = ""
-    email = ""
-    name = ""
-    if request.method == "POST":
-        name = normalize_name(request.form.get("name", ""))
-        email = normalize_email(request.form.get("email", ""))
-        password = request.form.get("password", "")
-        confirm_password = request.form.get("confirm_password", "")
-
-        if not name:
-            message = "Enter your name to create your account."
-        elif not email:
-            message = "Enter an email address to create your account."
-        elif "@" not in email:
-            message = "Enter a valid email address."
-        elif not password_is_valid(password):
-            message = "Choose a password with at least 8 characters."
-        elif password != confirm_password:
-            message = "Passwords did not match. Please try again."
-        elif get_user_by_email(email) is not None:
-            message = "That email address is already registered."
-        else:
-            user = create_user(email, password, role=USER_ROLE, name=name)
-            login_user(user)
-            return redirect(url_for("welcome"))
-
-    return render_template("register.html", message=message, email=email, name=name)
+        return render(request, "register.html", {"message": "New user registration is currently disabled.", "email": "", "name": ""}, status_code=403)
+    return render(request, "register.html", {"message": "", "email": "", "name": ""})
 
 
-@app.route("/forgot-password", methods=["GET", "POST"])
-def forgot_password():
+@app.post("/register", response_class=HTMLResponse, name="register_post")
+def register_post(
+    request: Request,
+    name: str = Form(""),
+    email: str = Form(""),
+    password: str = Form(""),
+    confirm_password: str = Form(""),
+):
     if not admin_exists():
-        return redirect(url_for("setup_admin"))
+        return redirect_to(route_url(request, "setup_admin"))
+    if current_user(request) is not None:
+        return redirect_to(route_url(request, "welcome"))
+    if not is_registration_enabled():
+        return render(request, "register.html", {"message": "New user registration is currently disabled.", "email": "", "name": ""}, status_code=403)
+
+    normalized_name = normalize_name(name)
+    normalized_email = normalize_email(email)
     message = ""
-    if request.method == "POST":
-        email = normalize_email(request.form.get("email", ""))
-        user = get_user_by_email(email)
-        if user is not None:
-            try:
-                token = generate_password_reset_token(email)
-                reset_link = build_reset_link(token)
-                send_password_reset_email(email, reset_link)
-                audit_auth_event("password_reset_email", email, "success", details="forgot password email sent")
-            except Exception:
-                audit_auth_event("password_reset_email", email, "failure", details="forgot password email send failed")
-                message = "We couldn't send the password reset email right now. Please try again."
-                return render_template("forgot_password.html", message=message, email=email)
-        else:
-            audit_auth_event("password_reset_email", email, "failure", details="forgot password requested for unknown email")
-        message = "If that email is registered, a password reset link has been sent."
-        return render_template("forgot_password.html", message=message, email="")
-
-    return render_template("forgot_password.html", message=message, email="")
+    if not normalized_name:
+        message = "Enter your name to create your account."
+    elif not normalized_email:
+        message = "Enter an email address to create your account."
+    elif "@" not in normalized_email:
+        message = "Enter a valid email address."
+    elif not password_is_valid(password):
+        message = "Choose a password with at least 8 characters."
+    elif password != confirm_password:
+        message = "Passwords did not match. Please try again."
+    elif get_user_by_email(normalized_email) is not None:
+        message = "That email address is already registered."
+    else:
+        user = create_user(normalized_email, password, role=USER_ROLE, name=normalized_name)
+        login_user(request, user)
+        return redirect_to(route_url(request, "welcome"))
+    return render(request, "register.html", {"message": message, "email": normalized_email, "name": normalized_name})
 
 
-@app.route("/reset-password/<token>", methods=["GET", "POST"])
-def reset_password(token: str):
+@app.get("/forgot-password", response_class=HTMLResponse, name="forgot_password")
+def forgot_password_get(request: Request):
     if not admin_exists():
-        return redirect(url_for("setup_admin"))
+        return redirect_to(route_url(request, "setup_admin"))
+    return render(request, "forgot_password.html", {"message": "", "email": ""})
+
+
+@app.post("/forgot-password", response_class=HTMLResponse, name="forgot_password_post")
+def forgot_password_post(request: Request, email: str = Form("")):
+    if not admin_exists():
+        return redirect_to(route_url(request, "setup_admin"))
+    normalized_email = normalize_email(email)
+    user = get_user_by_email(normalized_email)
+    if user is not None:
+        try:
+            token = generate_password_reset_token(normalized_email)
+            reset_link = build_reset_link(request, token)
+            send_password_reset_email(normalized_email, reset_link)
+            audit_auth_event("password_reset_email", normalized_email, "success", details="forgot password email sent")
+        except Exception:
+            audit_auth_event("password_reset_email", normalized_email, "failure", details="forgot password email send failed")
+            return render(
+                request,
+                "forgot_password.html",
+                {"message": "We couldn't send the password reset email right now. Please try again.", "email": normalized_email},
+            )
+    else:
+        audit_auth_event("password_reset_email", normalized_email, "failure", details="forgot password requested for unknown email")
+    return render(request, "forgot_password.html", {"message": "If that email is registered, a password reset link has been sent.", "email": ""})
+
+
+@app.get("/reset-password/{token}", response_class=HTMLResponse, name="reset_password")
+def reset_password_get(request: Request, token: str):
+    if not admin_exists():
+        return redirect_to(route_url(request, "setup_admin"))
     user = verify_password_reset_token(token)
     if user is None:
         audit_auth_event("password_reset", "", "failure", details="invalid or expired reset token")
-        return render_template(
-            "reset_password.html",
-            message="That password reset link is invalid or has expired.",
-            token=token,
-            token_valid=False,
-        )
+        return render(request, "reset_password.html", {"message": "That password reset link is invalid or has expired.", "token": token, "reset_link_valid": False})
+    return render(request, "reset_password.html", {"message": "", "token": token, "reset_link_valid": True, "reset_email": str(user["email"])})
 
+
+@app.post("/reset-password/{token}", response_class=HTMLResponse, name="reset_password_post")
+def reset_password_post(
+    request: Request,
+    token: str,
+    password: str = Form(""),
+    confirm_password: str = Form(""),
+):
+    if not admin_exists():
+        return redirect_to(route_url(request, "setup_admin"))
+    user = verify_password_reset_token(token)
+    if user is None:
+        audit_auth_event("password_reset", "", "failure", details="invalid or expired reset token")
+        return render(request, "reset_password.html", {"message": "That password reset link is invalid or has expired.", "token": token, "reset_link_valid": False})
     message = ""
-    if request.method == "POST":
-        password = request.form.get("password", "")
-        confirm_password = request.form.get("confirm_password", "")
-        if not password_is_valid(password):
-            audit_auth_event("password_reset", str(user["email"]), "failure", details="password too short")
-            message = "Choose a password with at least 8 characters."
-        elif password != confirm_password:
-            audit_auth_event("password_reset", str(user["email"]), "failure", details="password confirmation mismatch")
-            message = "Passwords did not match. Please try again."
-        else:
-            update_user_password(int(user["id"]), password)
-            logout_current_user()
-            audit_auth_event("password_reset", str(user["email"]), "success", details="password updated")
-            return redirect(
-                url_for(
-                    "login",
-                    message="Your password has been reset. You can sign in now.",
-                    email=str(user["email"]),
-                )
+    if not password_is_valid(password):
+        audit_auth_event("password_reset", str(user["email"]), "failure", details="password too short")
+        message = "Choose a password with at least 8 characters."
+    elif password != confirm_password:
+        audit_auth_event("password_reset", str(user["email"]), "failure", details="password confirmation mismatch")
+        message = "Passwords did not match. Please try again."
+    else:
+        update_user_password(int(user["id"]), password)
+        logout_current_user(request)
+        audit_auth_event("password_reset", str(user["email"]), "success", details="password updated")
+        return redirect_to(
+            route_url(
+                request,
+                "login",
+                message="Your password has been reset. You can sign in now.",
+                email=str(user["email"]),
             )
-
-    return render_template(
-        "reset_password.html",
-        message=message,
-        token=token,
-        token_valid=True,
-        reset_email=str(user["email"]),
-    )
+        )
+    return render(request, "reset_password.html", {"message": message, "token": token, "reset_link_valid": True, "reset_email": str(user["email"])})
 
 
-@app.route("/logout", methods=["GET"])
-def logout():
-    user = current_user()
-    logout_current_user()
+@app.get("/logout", name="logout")
+def logout(request: Request):
+    user = current_user(request)
+    logout_current_user(request)
     if user is not None:
         audit_auth_event("logout", str(user["email"]), "success", details="user signed out")
-    return redirect(url_for("setup_admin" if not admin_exists() else "login", message="You have been signed out."))
+    return redirect_to(route_url(request, "setup_admin" if not admin_exists() else "login", message="You have been signed out."))
 
 
-@app.route("/account/avatar", methods=["GET"])
-def account_avatar():
-    user = current_user()
+@app.get("/account/avatar", name="account_avatar")
+def account_avatar(request: Request):
+    user = current_user(request)
     if user is None or not user_has_avatar(user):
-        return Response(status=404)
+        return Response(status_code=404)
     return Response(
         bytes(user["avatar_data"]),
-        mimetype=str(user["avatar_mime"] or AVATAR_MIME_TYPE),
+        media_type=str(user["avatar_mime"] or AVATAR_MIME_TYPE),
         headers={"Cache-Control": "private, max-age=300"},
     )
 
 
-@app.route("/account", methods=["GET", "POST"])
-def account():
-    user = current_user()
-    if user is None:
-        return redirect(url_for("login"))
+def account_context(message: str = "", message_type: str = "", avatar_size: int = AVATAR_SIZE_DEFAULT_PX) -> dict[str, object]:
+    return {
+        "message": message,
+        "message_type": message_type,
+        "avatar_size": avatar_size,
+        "avatar_size_min": AVATAR_SIZE_MIN_PX,
+        "avatar_size_max": AVATAR_SIZE_MAX_PX,
+    }
 
-    message = request.args.get("message", "")
-    message_type = "success" if message else ""
-    avatar_size = AVATAR_SIZE_DEFAULT_PX
 
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "profile":
-            name = normalize_name(request.form.get("name", ""))
-            if not name:
-                message = "Enter your name."
-                message_type = "error"
-            else:
-                update_user_profile(int(user["id"]), name=name)
-                audit_auth_event("profile_update", str(user["email"]), "success", details="name updated")
-                return redirect(url_for("account", message="Profile updated."))
-        elif action == "password":
-            current_password = request.form.get("current_password", "")
-            new_password = request.form.get("new_password", "")
-            confirm_password = request.form.get("confirm_password", "")
-            if not check_password_hash(str(user["password_hash"]), current_password):
-                audit_auth_event("password_change", str(user["email"]), "failure", details="current password mismatch")
-                message = "Current password is incorrect."
-                message_type = "error"
-            elif not password_is_valid(new_password):
-                audit_auth_event("password_change", str(user["email"]), "failure", details="password too short")
-                message = "Choose a new password with at least 8 characters."
-                message_type = "error"
-            elif new_password != confirm_password:
-                audit_auth_event("password_change", str(user["email"]), "failure", details="password confirmation mismatch")
-                message = "Passwords did not match. Please try again."
-                message_type = "error"
-            else:
-                update_user_password(int(user["id"]), new_password)
-                audit_auth_event("password_change", str(user["email"]), "success", details="password updated")
-                return redirect(url_for("account", message="Password updated."))
-        elif action == "avatar":
-            avatar_size = parse_avatar_size(request.form.get("avatar_size", ""))
-            try:
-                avatar_data = process_avatar_upload(request.files.get("avatar"), requested_size=avatar_size)
-                update_user_avatar(int(user["id"]), avatar_data)
-                audit_auth_event("profile_update", str(user["email"]), "success", details="avatar updated")
-                return redirect(url_for("account", message="Profile image updated."))
-            except ValueError as exc:
-                audit_auth_event("profile_update", str(user["email"]), "failure", details="avatar update failed")
-                message = str(exc)
-                message_type = "error"
-        else:
-            message = "Choose an account action."
-            message_type = "error"
-
-    return render_template(
+@app.get("/account", response_class=HTMLResponse, name="account")
+def account_get(request: Request):
+    return render(
+        request,
         "account.html",
-        message=message,
-        message_type=message_type,
-        avatar_size=avatar_size,
-        avatar_size_min=AVATAR_SIZE_MIN_PX,
-        avatar_size_max=AVATAR_SIZE_MAX_PX,
+        account_context(request.query_params.get("message", ""), "success" if request.query_params.get("message", "") else ""),
     )
 
 
-@app.route("/setup-admin", methods=["GET", "POST"])
-def setup_admin():
-    current = current_user()
-    if admin_exists():
-        if current is not None and str(current["role"]) == ADMIN_ROLE and not admin_email_is_verified(current):
-            return update_admin_setup(current)
-        if current is not None:
-            return redirect(url_for("welcome"))
-        return redirect(url_for("login"))
-
+@app.post("/account", response_class=HTMLResponse, name="account_post")
+async def account_post(
+    request: Request,
+    action: str = Form(""),
+    name: str = Form(""),
+    current_password: str = Form(""),
+    new_password: str = Form(""),
+    confirm_password: str = Form(""),
+    avatar_size: str = Form(""),
+    avatar: UploadFile | None = File(None),
+):
+    user = current_user(request)
+    if user is None:
+        return redirect_to(route_url(request, "login"))
     message = ""
-    email = ""
-    first_name = ""
-    last_name = ""
-    email_verified = False
-    if request.method == "POST":
-        first_name = normalize_name(request.form.get("first_name", ""))
-        last_name = normalize_name(request.form.get("last_name", ""))
-        email = normalize_email(request.form.get("email", ""))
-        email_verified = request.form.get("email_verified") == "true"
-        password = request.form.get("password", "")
-        confirm_password = request.form.get("confirm_password", "")
-
-        if not first_name:
-            message = "Enter the admin first name."
-        elif not last_name:
-            message = "Enter the admin last name."
-        elif not email:
-            message = "Enter an email address for the admin account."
-        elif not email_is_valid(email):
-            message = "Enter a valid email address."
-        elif not password_is_valid(password):
-            message = "Choose a password with at least 8 characters."
-        elif password != confirm_password:
+    message_type = "error"
+    parsed_avatar_size = AVATAR_SIZE_DEFAULT_PX
+    if action == "profile":
+        normalized_name = normalize_name(name)
+        if not normalized_name:
+            message = "Enter your name."
+        else:
+            update_user_profile(int(user["id"]), name=normalized_name)
+            audit_auth_event("profile_update", str(user["email"]), "success", details="name updated")
+            return redirect_to(route_url(request, "account", message="Profile updated."))
+    elif action == "password":
+        if not check_password_hash(str(user["password_hash"]), current_password):
+            audit_auth_event("password_change", str(user["email"]), "failure", details="current password mismatch")
+            message = "Current password is incorrect."
+        elif not password_is_valid(new_password):
+            audit_auth_event("password_change", str(user["email"]), "failure", details="password too short")
+            message = "Choose a new password with at least 8 characters."
+        elif new_password != confirm_password:
+            audit_auth_event("password_change", str(user["email"]), "failure", details="password confirmation mismatch")
             message = "Passwords did not match. Please try again."
         else:
-            user = create_user(
-                email,
-                password,
-                role=ADMIN_ROLE,
-                first_name=first_name,
-                last_name=last_name,
-                email_verified=email_verified,
-            )
-            if not set_registration_enabled(False):
-                delete_user(int(user["id"]))
-                message = "We couldn't finish admin setup right now. Please try again."
-                return render_template(
-                    "setup_admin.html",
-                    message=message,
-                    email=email,
-                    first_name=first_name,
-                    last_name=last_name,
-                    email_verified=email_verified,
-                    existing_admin=False,
-                )
-            login_user(user)
-            audit_auth_event("admin_bootstrap", email, "success", details="initial admin account created")
-            return redirect(url_for("admin_dashboard", message="Admin account created."))
-
-    return render_template(
-        "setup_admin.html",
-        message=message,
-        email=email,
-        first_name=first_name,
-        last_name=last_name,
-        email_verified=email_verified,
-        existing_admin=False,
-    )
+            update_user_password(int(user["id"]), new_password)
+            audit_auth_event("password_change", str(user["email"]), "success", details="password updated")
+            return redirect_to(route_url(request, "account", message="Password updated."))
+    elif action == "avatar":
+        parsed_avatar_size = parse_avatar_size(avatar_size)
+        try:
+            avatar_data = await process_avatar_upload(avatar, requested_size=parsed_avatar_size)
+            update_user_avatar(int(user["id"]), avatar_data)
+            audit_auth_event("profile_update", str(user["email"]), "success", details="avatar updated")
+            return redirect_to(route_url(request, "account", message="Profile image updated."))
+        except ValueError as exc:
+            audit_auth_event("profile_update", str(user["email"]), "failure", details="avatar update failed")
+            message = str(exc)
+    else:
+        message = "Choose an account action."
+    return render(request, "account.html", account_context(message, message_type, parsed_avatar_size))
 
 
-def update_admin_setup(user):
+def setup_admin_context(message: str, email: str, first_name: str, last_name: str, email_verified: bool, existing_admin: bool) -> dict[str, object]:
+    return {
+        "message": message,
+        "email": email,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email_verified": email_verified,
+        "existing_admin": existing_admin,
+    }
+
+
+def update_admin_setup(
+    request: Request,
+    user,
+    *,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    email: str | None = None,
+    email_verified: bool = False,
+    submitted: bool = False,
+):
     message = "Verify or correct the admin email address before continuing."
-    email = str(user["email"])
-    first_name = normalize_name(str(user["first_name"])) if "first_name" in user.keys() else ""
-    last_name = normalize_name(str(user["last_name"])) if "last_name" in user.keys() else ""
-    if not first_name and not last_name:
+    current_first_name = normalize_name(str(user["first_name"])) if "first_name" in user.keys() else ""
+    current_last_name = normalize_name(str(user["last_name"])) if "last_name" in user.keys() else ""
+    if not current_first_name and not current_last_name:
         name_parts = display_user_name(user).split()
-        first_name = name_parts[0] if name_parts else ""
-        last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
-    email_verified = False
+        current_first_name = name_parts[0] if name_parts else ""
+        current_last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
 
-    if request.method == "POST":
-        first_name = normalize_name(request.form.get("first_name", ""))
-        last_name = normalize_name(request.form.get("last_name", ""))
-        email = normalize_email(request.form.get("email", ""))
-        email_verified = request.form.get("email_verified") == "true"
-        if not first_name:
+    display_first_name = normalize_name(first_name if first_name is not None else current_first_name)
+    display_last_name = normalize_name(last_name if last_name is not None else current_last_name)
+    display_email = normalize_email(email if email is not None else str(user["email"]))
+
+    if submitted:
+        if not display_first_name:
             message = "Enter the admin first name."
-        elif not last_name:
+        elif not display_last_name:
             message = "Enter the admin last name."
-        elif not email:
+        elif not display_email:
             message = "Enter an email address for the admin account."
-        elif not email_is_valid(email):
+        elif not email_is_valid(display_email):
             message = "Enter a valid email address."
         elif not email_verified:
             message = "Confirm that the admin email address has been verified."
         else:
             update_admin_identity(
                 int(user["id"]),
-                first_name=first_name,
-                last_name=last_name,
-                email=email,
+                first_name=display_first_name,
+                last_name=display_last_name,
+                email=display_email,
                 email_verified=True,
             )
-            audit_auth_event("admin_email_verify", email, "success", details="admin email verified")
-            return redirect(url_for("admin_dashboard", message="Admin email verified."))
+            audit_auth_event("admin_email_verify", display_email, "success", details="admin email verified")
+            return redirect_to(route_url(request, "admin_dashboard", message="Admin email verified."))
 
-    return render_template(
+    return render(
+        request,
         "setup_admin.html",
-        message=message,
-        email=email,
-        first_name=first_name,
-        last_name=last_name,
-        email_verified=email_verified,
-        existing_admin=True,
+        setup_admin_context(message, display_email, display_first_name, display_last_name, email_verified, True),
     )
 
 
-def admin_required():
-    if not current_user_is_admin():
-        return redirect(url_for("welcome"))
+@app.get("/setup-admin", response_class=HTMLResponse, name="setup_admin")
+def setup_admin_get(request: Request):
+    current = current_user(request)
+    if admin_exists():
+        if current is not None and str(current["role"]) == ADMIN_ROLE and not admin_email_is_verified(current):
+            return update_admin_setup(request, current)
+        if current is not None:
+            return redirect_to(route_url(request, "welcome"))
+        return redirect_to(route_url(request, "login"))
+    return render(request, "setup_admin.html", setup_admin_context("", "", "", "", False, False))
+
+
+@app.post("/setup-admin", response_class=HTMLResponse, name="setup_admin_post")
+def setup_admin_post(
+    request: Request,
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    email: str = Form(""),
+    email_verified: str = Form(""),
+    password: str = Form(""),
+    confirm_password: str = Form(""),
+):
+    current = current_user(request)
+    verified = email_verified == "true"
+    if admin_exists():
+        if current is not None and str(current["role"]) == ADMIN_ROLE and not admin_email_is_verified(current):
+            return update_admin_setup(
+                request,
+                current,
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                email_verified=verified,
+                submitted=True,
+            )
+        if current is not None:
+            return redirect_to(route_url(request, "welcome"))
+        return redirect_to(route_url(request, "login"))
+
+    normalized_first_name = normalize_name(first_name)
+    normalized_last_name = normalize_name(last_name)
+    normalized_email = normalize_email(email)
+    message = ""
+    if not normalized_first_name:
+        message = "Enter the admin first name."
+    elif not normalized_last_name:
+        message = "Enter the admin last name."
+    elif not normalized_email:
+        message = "Enter an email address for the admin account."
+    elif not email_is_valid(normalized_email):
+        message = "Enter a valid email address."
+    elif not password_is_valid(password):
+        message = "Choose a password with at least 8 characters."
+    elif password != confirm_password:
+        message = "Passwords did not match. Please try again."
+    else:
+        user = create_user(
+            normalized_email,
+            password,
+            role=ADMIN_ROLE,
+            first_name=normalized_first_name,
+            last_name=normalized_last_name,
+            email_verified=verified,
+        )
+        if not set_registration_enabled(False):
+            delete_user(int(user["id"]))
+            message = "We couldn't finish admin setup right now. Please try again."
+            return render(request, "setup_admin.html", setup_admin_context(message, normalized_email, normalized_first_name, normalized_last_name, verified, False))
+        login_user(request, user)
+        audit_auth_event("admin_bootstrap", normalized_email, "success", details="initial admin account created")
+        return redirect_to(route_url(request, "admin_dashboard", message="Admin account created."))
+    return render(request, "setup_admin.html", setup_admin_context(message, normalized_email, normalized_first_name, normalized_last_name, verified, False))
+
+
+def admin_required(request: Request):
+    if not current_user_is_admin(request):
+        return redirect_to(route_url(request, "welcome"))
     return None
 
 
-@app.route("/admin", methods=["GET", "POST"])
-def admin_dashboard():
-    guard = admin_required()
+@app.get("/admin", response_class=HTMLResponse, name="admin_dashboard")
+def admin_dashboard(request: Request):
+    guard = admin_required(request)
+    if guard is not None:
+        return guard
+    return render(request, "admin.html", {"message": request.query_params.get("message", "")})
+
+
+@app.post("/admin", response_class=HTMLResponse, name="admin_dashboard_post")
+def admin_dashboard_post(request: Request, registration_enabled: str = Form("")):
+    guard = admin_required(request)
+    if guard is not None:
+        return guard
+    message = "Registration settings updated." if set_registration_enabled(registration_enabled == "true") else "We couldn't update registration settings right now."
+    return render(request, "admin.html", {"message": message})
+
+
+@app.get("/admin/users", response_class=HTMLResponse, name="admin_users")
+def admin_users_get(request: Request):
+    guard = admin_required(request)
+    if guard is not None:
+        return guard
+    return render(request, "admin_users.html", {"message": request.query_params.get("message", ""), "users": list_users(), "roles": sorted(VALID_ROLES)})
+
+
+@app.post("/admin/users", response_class=HTMLResponse, name="admin_users_post")
+def admin_users_post(
+    request: Request,
+    action: str = Form(""),
+    name: str = Form(""),
+    email: str = Form(""),
+    role: str = Form(USER_ROLE),
+    user_id: str = Form(""),
+):
+    guard = admin_required(request)
     if guard is not None:
         return guard
 
-    message = request.args.get("message", "")
-    if request.method == "POST":
-        enabled = request.form.get("registration_enabled") == "true"
-        if set_registration_enabled(enabled):
-            message = "Registration settings updated."
+    target_name = normalize_name(name)
+    target_email = normalize_email(email)
+    target_role = role
+    target_id = int(user_id) if user_id.isdigit() else None
+    target_user = get_user_by_id(target_id)
+    actor = current_user(request)
+    actor_email = str(actor["email"]) if actor is not None else ""
+    message = ""
+
+    if action == "create_user":
+        if not target_name:
+            audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="missing name")
+            message = "Enter a name for the new user."
+        elif not target_email:
+            audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="missing email")
+            message = "Enter an email address for the new user."
+        elif "@" not in target_email:
+            audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="invalid email")
+            message = "Enter a valid email address."
+        elif target_role not in VALID_ROLES:
+            audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="invalid role")
+            message = "Choose a valid user role."
+        elif get_user_by_email(target_email) is not None:
+            audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="email already exists")
+            message = "That email address already belongs to an existing user."
         else:
-            message = "We couldn't update registration settings right now."
-
-    return render_template("admin.html", message=message)
-
-
-@app.route("/admin/users", methods=["GET", "POST"])
-def admin_users():
-    guard = admin_required()
-    if guard is not None:
-        return guard
-
-    message = request.args.get("message", "")
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        target_name = normalize_name(request.form.get("name", ""))
-        target_email = normalize_email(request.form.get("email", ""))
-        target_role = request.form.get("role", USER_ROLE)
-        target_id_raw = request.form.get("user_id", "")
-        target_id = int(target_id_raw) if target_id_raw.isdigit() else None
-        target_user = get_user_by_id(target_id)
-        actor = current_user()
-        actor_email = str(actor["email"]) if actor is not None else ""
-
-        if action == "create_user":
-            if not target_name:
-                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="missing name")
-                message = "Enter a name for the new user."
-            elif not target_email:
-                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="missing email")
-                message = "Enter an email address for the new user."
-            elif "@" not in target_email:
-                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="invalid email")
-                message = "Enter a valid email address."
-            elif target_role not in VALID_ROLES:
-                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="invalid role")
-                message = "Choose a valid user role."
-            elif get_user_by_email(target_email) is not None:
-                audit_auth_event("user_create", target_email, "failure", actor_email=actor_email, details="email already exists")
-                message = "That email address already belongs to an existing user."
-            else:
-                temporary_password = generate_temporary_password()
-                create_user(target_email, temporary_password, role=target_role, name=target_name)
-                audit_auth_event("user_create", target_email, "success", actor_email=actor_email, details=f"user created role={target_role}")
-                try:
-                    reset_link = build_reset_link(generate_password_reset_token(target_email))
-                    send_password_reset_email(target_email, reset_link)
-                    audit_auth_event(
-                        "password_reset_email",
-                        target_email,
-                        "success",
-                        actor_email=actor_email,
-                        details="new user setup email sent",
-                    )
-                    message = f"Created {target_email} and sent a password setup email."
-                except Exception:
-                    audit_auth_event(
-                        "password_reset_email",
-                        target_email,
-                        "failure",
-                        actor_email=actor_email,
-                        details="new user setup email send failed",
-                    )
-                    message = f"Created {target_email}, but the password setup email could not be sent."
-        elif action == "delete_user" and target_user is not None:
-            if str(target_user["role"]) == ADMIN_ROLE and admin_count() == 1:
-                audit_auth_event(
-                    "user_delete",
-                    str(target_user["email"]),
-                    "failure",
-                    actor_email=actor_email,
-                    details="cannot delete last admin",
-                )
-                message = "You cannot delete the last admin account."
-            else:
-                delete_user(int(target_user["id"]))
-                audit_auth_event(
-                    "user_delete",
-                    str(target_user["email"]),
-                    "success",
-                    actor_email=actor_email,
-                    details="user deleted",
-                )
-                message = f"Deleted {target_user['email']}."
-        elif action == "update_role" and target_user is not None:
-            if target_role not in VALID_ROLES:
-                audit_auth_event(
-                    "user_role_update",
-                    str(target_user["email"]),
-                    "failure",
-                    actor_email=actor_email,
-                    details="invalid role",
-                )
-                message = "Choose a valid user role."
-            elif (
-                str(target_user["role"]) == ADMIN_ROLE
-                and target_role != ADMIN_ROLE
-                and admin_count() == 1
-            ):
-                audit_auth_event(
-                    "user_role_update",
-                    str(target_user["email"]),
-                    "failure",
-                    actor_email=actor_email,
-                    details="cannot demote last admin",
-                )
-                message = "You cannot demote the last admin account."
-            else:
-                update_user_role(int(target_user["id"]), target_role)
-                audit_auth_event(
-                    "user_role_update",
-                    str(target_user["email"]),
-                    "success",
-                    actor_email=actor_email,
-                    details=f"role updated to {target_role}",
-                )
-                message = f"Updated {target_user['email']} to {target_role}."
-        elif action == "send_reset" and target_user is not None:
+            temporary_password = generate_temporary_password()
+            create_user(target_email, temporary_password, role=target_role, name=target_name)
+            audit_auth_event("user_create", target_email, "success", actor_email=actor_email, details=f"user created role={target_role}")
             try:
-                reset_link = build_reset_link(generate_password_reset_token(str(target_user["email"])))
-                send_password_reset_email(str(target_user["email"]), reset_link)
-                audit_auth_event(
-                    "password_reset_email",
-                    str(target_user["email"]),
-                    "success",
-                    actor_email=actor_email,
-                    details="admin-triggered reset email sent",
-                )
-                message = f"Sent a password reset email to {target_user['email']}."
+                reset_link = build_reset_link(request, generate_password_reset_token(target_email))
+                send_password_reset_email(target_email, reset_link)
+                audit_auth_event("password_reset_email", target_email, "success", actor_email=actor_email, details="new user setup email sent")
+                message = f"Created {target_email} and sent a password setup email."
             except Exception:
-                audit_auth_event(
-                    "password_reset_email",
-                    str(target_user["email"]),
-                    "failure",
-                    actor_email=actor_email,
-                    details="admin-triggered reset email send failed",
-                )
-                message = f"Could not send a password reset email to {target_user['email']}."
+                audit_auth_event("password_reset_email", target_email, "failure", actor_email=actor_email, details="new user setup email send failed")
+                message = f"Created {target_email}, but the password setup email could not be sent."
+    elif action == "delete_user" and target_user is not None:
+        if str(target_user["role"]) == ADMIN_ROLE and admin_count() == 1:
+            audit_auth_event("user_delete", str(target_user["email"]), "failure", actor_email=actor_email, details="cannot delete last admin")
+            message = "You cannot delete the last admin account."
         else:
-            audit_auth_event("admin_user_action", target_email, "failure", actor_email=actor_email, details="invalid admin action")
-            message = "The requested admin action could not be completed."
+            delete_user(int(target_user["id"]))
+            audit_auth_event("user_delete", str(target_user["email"]), "success", actor_email=actor_email, details="user deleted")
+            message = f"Deleted {target_user['email']}."
+    elif action == "update_role" and target_user is not None:
+        if target_role not in VALID_ROLES:
+            audit_auth_event("user_role_update", str(target_user["email"]), "failure", actor_email=actor_email, details="invalid role")
+            message = "Choose a valid user role."
+        elif str(target_user["role"]) == ADMIN_ROLE and target_role != ADMIN_ROLE and admin_count() == 1:
+            audit_auth_event("user_role_update", str(target_user["email"]), "failure", actor_email=actor_email, details="cannot demote last admin")
+            message = "You cannot demote the last admin account."
+        else:
+            update_user_role(int(target_user["id"]), target_role)
+            audit_auth_event("user_role_update", str(target_user["email"]), "success", actor_email=actor_email, details=f"role updated to {target_role}")
+            message = f"Updated {target_user['email']} to {target_role}."
+    elif action == "send_reset" and target_user is not None:
+        try:
+            reset_link = build_reset_link(request, generate_password_reset_token(str(target_user["email"])))
+            send_password_reset_email(str(target_user["email"]), reset_link)
+            audit_auth_event("password_reset_email", str(target_user["email"]), "success", actor_email=actor_email, details="admin-triggered reset email sent")
+            message = f"Sent a password reset email to {target_user['email']}."
+        except Exception:
+            audit_auth_event("password_reset_email", str(target_user["email"]), "failure", actor_email=actor_email, details="admin-triggered reset email send failed")
+            message = f"Could not send a password reset email to {target_user['email']}."
+    else:
+        audit_auth_event("admin_user_action", target_email, "failure", actor_email=actor_email, details="invalid admin action")
+        message = "The requested admin action could not be completed."
 
-    return render_template("admin_users.html", message=message, users=list_users(), roles=sorted(VALID_ROLES))
+    return render(request, "admin_users.html", {"message": message, "users": list_users(), "roles": sorted(VALID_ROLES)})
 
 
-@app.route("/download-history", methods=["GET"])
+@app.get("/download-history", name="download_history")
 def download_history():
     history_df = load_history_file(HISTORY_FILE)
     buffer = StringIO()
     history_df.to_csv(buffer, index=False)
     return Response(
         buffer.getvalue(),
-        mimetype="text/csv",
+        media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=Workout_History.csv"},
     )
 
 
-@app.route("/api/grafana/workouts", methods=["GET"])
-def grafana_workouts():
-    start_date = request.args.get("from", "") or request.args.get("start_date", "")
-    end_date = request.args.get("to", "") or request.args.get("end_date", "")
-
+@app.get("/api/grafana/workouts", name="grafana_workouts")
+def grafana_workouts(request: Request):
+    start_date = request.query_params.get("from", "") or request.query_params.get("start_date", "")
+    end_date = request.query_params.get("to", "") or request.query_params.get("end_date", "")
     try:
-        selected_fields = parse_field_selection(request.args)
+        selected_fields = parse_field_selection(request.query_params)
     except ValueError:
-        return jsonify(error="Unsupported field selection.", allowed_fields=GRAPHABLE_FIELDS), 400
+        return JSONResponse({"error": "Unsupported field selection.", "allowed_fields": GRAPHABLE_FIELDS}, status_code=400)
 
-    historical_data = load_history_file(HISTORY_FILE)
-    filtered_data = filter_data(historical_data, start_date, end_date)
-
+    filtered_data = filter_data(load_history_file(HISTORY_FILE), start_date, end_date)
     points: list[dict] = []
     for _, row in filtered_data.iterrows():
         timestamp = row["Workout_Date"].strftime("%Y-%m-%dT%H:%M:%SZ")
         for field in selected_fields:
             value = row[field]
-            if pd.isna(value):
-                continue
-            points.append({"time": timestamp, "field": field, "value": float(value)})
-
-    return jsonify(points)
+            if not pd.isna(value):
+                points.append({"time": timestamp, "field": field, "value": float(value)})
+    return points
 
 
-@app.route("/api/grafana/summary", methods=["GET"])
-def grafana_summary():
-    start_date = request.args.get("from", "") or request.args.get("start_date", "")
-    end_date = request.args.get("to", "") or request.args.get("end_date", "")
-
+@app.get("/api/grafana/summary", name="grafana_summary")
+def grafana_summary(request: Request):
+    start_date = request.query_params.get("from", "") or request.query_params.get("start_date", "")
+    end_date = request.query_params.get("to", "") or request.query_params.get("end_date", "")
     try:
-        selected_fields = parse_field_selection(request.args)
+        selected_fields = parse_field_selection(request.query_params)
     except ValueError:
-        return jsonify(error="Unsupported field selection.", allowed_fields=GRAPHABLE_FIELDS), 400
+        return JSONResponse({"error": "Unsupported field selection.", "allowed_fields": GRAPHABLE_FIELDS}, status_code=400)
 
-    historical_data = load_history_file(HISTORY_FILE)
-    filtered_data = filter_data(historical_data, start_date, end_date)
-
+    filtered_data = filter_data(load_history_file(HISTORY_FILE), start_date, end_date)
     summary: dict[str, object] = {
         "workout_count": int(len(filtered_data)),
         "from": start_date,
@@ -1546,143 +1608,208 @@ def grafana_summary():
         "minimums": {},
         "maximums": {},
     }
-
     for field in selected_fields:
         field_series = pd.to_numeric(filtered_data[field], errors="coerce").dropna()
-        if field_series.empty:
-            summary["averages"][field] = None
-            summary["minimums"][field] = None
-            summary["maximums"][field] = None
-            continue
-        summary["averages"][field] = float(field_series.mean())
-        summary["minimums"][field] = float(field_series.min())
-        summary["maximums"][field] = float(field_series.max())
-
-    return jsonify(summary)
+        summary["averages"][field] = None if field_series.empty else float(field_series.mean())
+        summary["minimums"][field] = None if field_series.empty else float(field_series.min())
+        summary["maximums"][field] = None if field_series.empty else float(field_series.max())
+    return summary
 
 
-@app.route("/", methods=["GET"])
-def welcome():
+@app.get("/", response_class=HTMLResponse, name="welcome")
+def welcome(request: Request):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     historical_data = load_history_file(HISTORY_FILE)
-    return render_template("welcome.html", **build_page_context(historical_data))
+    return render(request, "welcome.html", build_page_context(historical_data))
 
 
-@app.route("/workout-performance", methods=["GET"])
-def workout_performance():
+@app.get("/workout-performance", response_class=HTMLResponse, name="workout_performance")
+def workout_performance(request: Request):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    message = request.args.get("message", "")
+    message = request.query_params.get("message", "")
     historical_data = load_history_file(HISTORY_FILE)
     default_start_date = (current_day() - pd.DateOffset(years=1)).date().isoformat()
-    start_date = request.values.get("start_date", default_start_date)
-    end_date = request.values.get("end_date", "")
+    start_date = request.query_params.get("start_date", default_start_date)
+    end_date = request.query_params.get("end_date", "")
 
-    selected_fields = [field for field in request.values.getlist("fields") if field in GRAPHABLE_FIELDS]
+    selected_fields = [field for field in request.query_params.getlist("fields") if field in GRAPHABLE_FIELDS]
     if not selected_fields:
         selected_fields = ["Distance", "Avg_Speed", "Workout_Time"]
 
     filtered_data = filter_data(historical_data, start_date, end_date)
     chart_html = build_chart(filtered_data, selected_fields)
     historical_table_data = filtered_data.sort_values(by=["Workout_Date"], ascending=False).reset_index(drop=True)
-    table_html = (
-        historical_table_data.to_html(classes="table table-striped", index=False)
-        if not historical_table_data.empty
-        else ""
-    )
+    table_html = historical_table_data.to_html(classes="table table-striped", index=False) if not historical_table_data.empty else ""
 
-    return render_template(
+    return render(
+        request,
         "workout_performance.html",
-        message=message,
-        fields=GRAPHABLE_FIELDS,
-        selected_fields=selected_fields,
-        start_date=start_date,
-        end_date=end_date,
-        chart_html=chart_html,
-        table_html=table_html,
-        record_count=len(filtered_data),
-        **build_page_context(historical_data),
+        {
+            "message": message,
+            "fields": GRAPHABLE_FIELDS,
+            "selected_fields": selected_fields,
+            "start_date": start_date,
+            "end_date": end_date,
+            "chart_html": chart_html,
+            "table_html": table_html,
+            "record_count": len(filtered_data),
+            **build_page_context(historical_data),
+        },
     )
 
 
-@app.route("/upload-workout", methods=["GET", "POST"])
-def upload_workout():
+@app.get("/upload-workout", response_class=HTMLResponse, name="upload_workout")
+def upload_workout_get(request: Request):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    historical_data = load_history_file(HISTORY_FILE)
+    return render(request, "upload_workout.html", {"message": "", **build_page_context(historical_data)})
+
+
+@app.post("/upload-workout", response_class=HTMLResponse, name="upload_workout_post")
+async def upload_workout_post(request: Request, dat_file: UploadFile | None = File(None)):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = ""
-
-    if request.method == "POST":
-        historical_data = load_history_file(HISTORY_FILE)
-        try:
-            dat_upload = request.files.get("dat_file")
-            if dat_upload and dat_upload.filename:
-                start = perf_counter()
-                new_data = read_dat_from_upload(dat_upload)
-                FILE_IMPORT_LATENCY.labels("upload").observe(perf_counter() - start)
-                historical_data = merge_data(new_data, historical_data)
-                save_history(historical_data, HISTORY_FILE)
-                app.logger.info("DAT upload merged: file=%s rows=%s", dat_upload.filename, len(new_data))
-                return redirect(
-                    url_for(
-                        "workout_performance",
-                        message=f"Uploaded {dat_upload.filename} and merged {len(new_data)} workouts.",
-                    )
-                )
-
-            if DAT_FILE.exists():
-                start = perf_counter()
-                new_data = read_dat_from_disk(DAT_FILE)
-                FILE_IMPORT_LATENCY.labels("disk").observe(perf_counter() - start)
-                historical_data = merge_data(new_data, historical_data)
-                save_history(historical_data, HISTORY_FILE)
-                app.logger.info("Disk import merged: file=%s rows=%s", DAT_FILE, len(new_data))
-                return redirect(
-                    url_for(
-                        "workout_performance",
-                        message=f"Loaded {DAT_FILE.name} from disk and merged {len(new_data)} workouts.",
-                    )
-                )
-
-            message = "No upload provided and no DAT file found on disk."
-            app.logger.warning("Workout import attempted without DAT file available")
-        except Exception:
-            message = DAT_IMPORT_ERROR_MESSAGE
-            app.logger.warning("DAT parse/import failed")
-
     historical_data = load_history_file(HISTORY_FILE)
-    return render_template("upload_workout.html", message=message, **build_page_context(historical_data))
+    try:
+        if dat_file and dat_file.filename:
+            start = perf_counter()
+            new_data = await read_dat_from_upload(dat_file)
+            FILE_IMPORT_LATENCY.labels("upload").observe(perf_counter() - start)
+            historical_data = merge_data(new_data, historical_data)
+            save_history(historical_data, HISTORY_FILE)
+            app.logger.info("DAT upload merged: file=%s rows=%s", dat_file.filename, len(new_data))
+            return redirect_to(route_url(request, "workout_performance", message=f"Uploaded {dat_file.filename} and merged {len(new_data)} workouts."))
+        if DAT_FILE.exists():
+            start = perf_counter()
+            new_data = read_dat_from_disk(DAT_FILE)
+            FILE_IMPORT_LATENCY.labels("disk").observe(perf_counter() - start)
+            historical_data = merge_data(new_data, historical_data)
+            save_history(historical_data, HISTORY_FILE)
+            app.logger.info("Disk import merged: file=%s rows=%s", DAT_FILE, len(new_data))
+            return redirect_to(route_url(request, "workout_performance", message=f"Loaded {DAT_FILE.name} from disk and merged {len(new_data)} workouts."))
+        message = "No upload provided and no DAT file found on disk."
+        app.logger.warning("Workout import attempted without DAT file available")
+    except Exception:
+        message = DAT_IMPORT_ERROR_MESSAGE
+        app.logger.warning("DAT parse/import failed")
+    historical_data = load_history_file(HISTORY_FILE)
+    return render(request, "upload_workout.html", {"message": message, **build_page_context(historical_data)})
 
 
-@app.route("/upload-history", methods=["GET", "POST"])
-def upload_history():
+@app.get("/upload-history", response_class=HTMLResponse, name="upload_history")
+def upload_history_get(request: Request):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    historical_data = load_history_file(HISTORY_FILE)
+    return render(request, "upload_history.html", {"message": "", **build_page_context(historical_data)})
+
+
+@app.post("/upload-history", response_class=HTMLResponse, name="upload_history_post")
+async def upload_history_post(request: Request, history_csv_file: UploadFile | None = File(None)):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = ""
-
-    if request.method == "POST":
-        historical_data = load_history_file(HISTORY_FILE)
-        try:
-            history_upload = request.files.get("history_csv_file")
-            if not history_upload or not history_upload.filename:
-                message = "Please choose a historical CSV file to import."
-            else:
-                start = perf_counter()
-                uploaded_history = read_history_csv_from_upload(history_upload)
-                FILE_IMPORT_LATENCY.labels("history_csv").observe(perf_counter() - start)
-                historical_data = merge_data(uploaded_history, historical_data)
-                save_history(historical_data, HISTORY_FILE)
-                app.logger.info("History CSV merged: file=%s rows=%s", history_upload.filename, len(uploaded_history))
-                return redirect(
-                    url_for(
-                        "workout_performance",
-                        message=f"Uploaded {history_upload.filename} and merged {len(uploaded_history)} historical rows.",
-                    )
-                )
-        except Exception:
-            message = HISTORY_IMPORT_ERROR_MESSAGE
-            app.logger.warning("History CSV import failed")
-
     historical_data = load_history_file(HISTORY_FILE)
-    return render_template("upload_history.html", message=message, **build_page_context(historical_data))
+    try:
+        if not history_csv_file or not history_csv_file.filename:
+            message = "Please choose a historical CSV file to import."
+        else:
+            start = perf_counter()
+            uploaded_history = await read_history_csv_from_upload(history_csv_file)
+            FILE_IMPORT_LATENCY.labels("history_csv").observe(perf_counter() - start)
+            historical_data = merge_data(uploaded_history, historical_data)
+            save_history(historical_data, HISTORY_FILE)
+            app.logger.info("History CSV merged: file=%s rows=%s", history_csv_file.filename, len(uploaded_history))
+            return redirect_to(route_url(request, "workout_performance", message=f"Uploaded {history_csv_file.filename} and merged {len(uploaded_history)} historical rows."))
+    except Exception:
+        message = HISTORY_IMPORT_ERROR_MESSAGE
+        app.logger.warning("History CSV import failed")
+    historical_data = load_history_file(HISTORY_FILE)
+    return render(request, "upload_history.html", {"message": message, **build_page_context(historical_data)})
 
 
 if __name__ == "__main__":
-    # Disable Flask debug mode in direct startup to avoid stack trace exposure.
-    app.run(host=HOST, port=PORT, debug=False)
+    import uvicorn
+
+    uvicorn.run("app.app:app", host=HOST, port=PORT, reload=False)
+
+
+class _CompatResponse:
+    def __init__(self, response):
+        self._response = response
+        self.status_code = response.status_code
+        self.headers = response.headers
+
+    def get_json(self):
+        return self._response.json()
+
+    def get_data(self, *, as_text: bool = False):
+        return self._response.text if as_text else self._response.content
+
+
+class _CompatSessionTransaction:
+    def __init__(self, client: "_CompatTestClient"):
+        self.client = client
+
+    def __enter__(self):
+        return self.client._session
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _CompatTestClient:
+    def __init__(self, fastapi_app: FastAPI):
+        from fastapi.testclient import TestClient
+
+        self._client = TestClient(fastapi_app, follow_redirects=False)
+        self._session: dict[str, int] = {}
+
+    def session_transaction(self):
+        return _CompatSessionTransaction(self)
+
+    def get(self, url: str, **kwargs):
+        return self._request("GET", url, **kwargs)
+
+    def post(self, url: str, **kwargs):
+        return self._request("POST", url, **kwargs)
+
+    def _request(self, method: str, url: str, **kwargs):
+        kwargs.pop("content_type", None)
+        follow_redirects = kwargs.pop("follow_redirects", False)
+        headers = dict(kwargs.pop("headers", {}) or {})
+        if USER_SESSION_KEY in self._session:
+            headers["x-test-user-id"] = str(self._session[USER_SESSION_KEY])
+
+        data = kwargs.pop("data", None)
+        files = kwargs.pop("files", None)
+        if data is not None and files is None:
+            form_data = {}
+            converted_files = {}
+            for key, value in dict(data).items():
+                if isinstance(value, tuple) and len(value) >= 2:
+                    file_obj, filename = value[:2]
+                    converted_files[key] = (filename, file_obj)
+                else:
+                    form_data[key] = value
+            data = form_data
+            files = converted_files or None
+
+        response = self._client.request(
+            method,
+            url,
+            data=data,
+            files=files,
+            headers=headers,
+            follow_redirects=follow_redirects,
+            **kwargs,
+        )
+        request_path = url.split("?", 1)[0]
+        if request_path == "/logout" or (request_path.startswith("/reset-password/") and response.status_code in {302, 303}):
+            self._session.clear()
+        return _CompatResponse(response)
+
+
+def _test_client():
+    return _CompatTestClient(app)
+
+
+app.test_client = _test_client

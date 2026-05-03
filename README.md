@@ -1,8 +1,8 @@
-# Flask Schwinn Dashboard
+# FastAPI Schwinn Dashboard
 
 ![schwinn-fitness](app/static/schwinn-logo.png)
 
-Flask replacement for `read_file.py` that:
+FastAPI replacement for `read_file.py` that:
 
 - reads `<user>.DAT`
 - parses workout JSON blocks using the same workout calculations
@@ -26,7 +26,7 @@ The parsed workout columns are:
 - `RPM`
 - `Level`
 
-## Poetry + Make (recommended)
+## uv + Make (recommended)
 
 ```bash
 make install
@@ -75,7 +75,7 @@ The dashboard now protects all pages, imports, downloads, and Grafana APIs behin
 - `GET|POST /login`
 - `GET|POST /register`
 - `GET|POST /forgot-password`
-- `GET|POST /reset-password/<token>`
+- `GET|POST /reset-password/{token}`
 
 On a fresh install, the app opens to `setup-admin` until the first admin account is created. After bootstrap:
 
@@ -163,13 +163,19 @@ docker run --rm \
   -e DATA_DIR=/app/data \
   -p 8080:8080 \
   -v "$(pwd)/app/data:/app/data" \
-  schwinn-dashboard:latest
+  schwinn:latest
 ```
 
 Put your bike export file at `app/data/<user>.DAT`.
 `DATA_DIR` controls where uploaded files and `Workout_History.csv` are stored.
 `PORT` controls the listen port inside the container.
 Runtime data such as `users.db` and `Workout_History.csv` should come from the mounted `/app/data` volume, not from the image itself.
+
+The container starts the app with Uvicorn:
+
+```bash
+uvicorn app.app:app --host 0.0.0.0 --port 8080
+```
 
 ## Docker compose
 

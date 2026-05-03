@@ -31,4 +31,4 @@ playwright-report/
 app/logs/
 .tools/
 .tools/*
-
+.coverage*
