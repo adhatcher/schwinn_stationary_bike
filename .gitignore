@@ -1,34 +1,45 @@
-AARON.DAT
+# macOS and editor noise
+.DS_Store
+**/.DS_Store
+.idea/
+*.swp
+
+# Python runtime and test artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+.coverage*
+coverage.xml
+
+# Virtual environments and notebooks
 .venv/
-.venv/*
+venv/
+**/.venv/
+**/venv/
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Local environment and helper scratch files
 .env
-.idea
-.ipynb_checkpoints
+.tools/
+myfile.json
+run_read_file.sh
+
+# App data and logs
+AARON.DAT
 Workout_History.csv
 Workout_History.csv.old
 Workout_History.csv.older
-myfile.json
-run_read_file.sh
-.pytest_cache
-.pytest_cache/*
-*/__pycache__
-*/__pycache__/*
-*/*.pyc
-*/*.pyo
-*/*.pyd
-*/*.swp
-*/.venv
-*/venv
-*/.pytest_cache
-*/data/*.csv
-*/data/*.db
-coverage.xml
-.coverage
-app/logs/*
+app/data/*.csv
+app/data/*.db
+app/logs/
+
+# Node and browser test artifacts
 node_modules/
 test-results/
 playwright-report/
-app/logs/
-.tools/
-.tools/*
-.coverage*

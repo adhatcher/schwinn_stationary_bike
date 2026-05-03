@@ -141,6 +141,26 @@ COLUMN_NAMES = [
     "Level",
 ]
 GRAPHABLE_FIELDS = [name for name in COLUMN_NAMES if name != "Workout_Date"]
+WORKOUT_DETAIL_PERIODS = {
+    "1_week": "1 week",
+    "2_weeks": "2 weeks",
+    "1_month": "1 month",
+    "begin_month": "begin of month",
+    "3_months": "3 months",
+    "5_months": "5 months",
+    "current_year": "current year",
+    "last_1_year": "last 1 year",
+    "all": "all",
+}
+METRIC_AGGREGATIONS = {
+    "Distance": "sum",
+    "Avg_Speed": "mean",
+    "Workout_Time": "sum",
+    "Total_Calories": "sum",
+    "Heart_Rate": "mean",
+    "RPM": "mean",
+    "Level": "mean",
+}
 DAT_IMPORT_ERROR_MESSAGE = "Unable to parse the uploaded DAT file. Check the file contents and try again."
 HISTORY_IMPORT_ERROR_MESSAGE = "Unable to import the historical CSV file. Verify the file format and try again."
 
@@ -1043,16 +1063,293 @@ def build_chart(df: pd.DataFrame, fields: list[str]) -> str | None:
         title="Schwinn Workout Performance",
         xaxis_title="Workout Date",
         yaxis_title="Value",
-        height=692,
+        autosize=True,
         hovermode="x unified",
         template="plotly_white",
+        margin=dict(l=48, r=24, t=58, b=48),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
 
-    chart_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
+    chart_html = fig.to_html(
+        full_html=False,
+        include_plotlyjs="cdn",
+        default_width="100%",
+        default_height="100%",
+        config={"responsive": True, "displaylogo": False, "displayModeBar": False},
+    )
     CHARTS_GENERATED.inc()
     CHART_GENERATION_LATENCY.observe(perf_counter() - start)
     return chart_html
+
+
+def normalize_workout_detail_period(period: str | None) -> str:
+    """Return a supported workout detail period."""
+    normalized = (period or "last_1_year").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "1week": "1_week",
+        "2weeks": "2_weeks",
+        "1month": "1_month",
+        "begin_of_month": "begin_month",
+        "beginning_of_month": "begin_month",
+        "3months": "3_months",
+        "5months": "5_months",
+        "last_year": "last_1_year",
+        "all_time": "all",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in WORKOUT_DETAIL_PERIODS else "last_1_year"
+
+
+def workout_detail_period_bounds(period: str, historical_data: pd.DataFrame) -> tuple[str, str]:
+    """Calculate inclusive date bounds for the selected workout detail period."""
+    if historical_data.empty:
+        return "", ""
+
+    if period == "all":
+        return (
+            historical_data["Workout_Date"].min().date().isoformat(),
+            historical_data["Workout_Date"].max().date().isoformat(),
+        )
+
+    today = current_day()
+    if period == "1_week":
+        start = today - pd.Timedelta(days=6)
+    elif period == "2_weeks":
+        start = today - pd.Timedelta(days=13)
+    elif period == "1_month":
+        start = today - pd.Timedelta(days=29)
+    elif period == "begin_month":
+        start = today.replace(day=1)
+    elif period == "3_months":
+        start = today - pd.Timedelta(days=89)
+    elif period == "5_months":
+        start = today - pd.Timedelta(days=149)
+    elif period == "current_year":
+        start = today.replace(month=1, day=1)
+    else:
+        start = today - pd.Timedelta(days=364)
+
+    return start.date().isoformat(), today.date().isoformat()
+
+
+def parse_graph_selection(args) -> list[str]:
+    """Parse selected Workout Details graph fields from query parameters."""
+    requested_graphs: list[str] = []
+    for graph in args.getlist("graphs"):
+        if graph:
+            requested_graphs.append(graph.strip())
+
+    comma_graphs = args.get("graph_fields", "")
+    if comma_graphs:
+        requested_graphs.extend(graph.strip() for graph in comma_graphs.split(",") if graph.strip())
+
+    if not requested_graphs:
+        return [] if args.get("graphs_submitted") == "1" else list(GRAPHABLE_FIELDS)
+
+    selected_graphs: list[str] = []
+    for graph in requested_graphs:
+        cleaned = graph.strip().strip("'\"")
+        if cleaned in GRAPHABLE_FIELDS and cleaned not in selected_graphs:
+            selected_graphs.append(cleaned)
+
+    return selected_graphs
+
+
+def summarize_stats(df: pd.DataFrame) -> dict[str, object]:
+    """Build MapMy-style summary totals for a filtered workout set."""
+    if df.empty:
+        return {
+            "workout_count": 0,
+            "distance": "0",
+            "duration": "0m",
+            "calories": "0",
+            "average_speed": "0",
+        }
+
+    distance = float(pd.to_numeric(df["Distance"], errors="coerce").fillna(0).sum())
+    duration = int(pd.to_numeric(df["Workout_Time"], errors="coerce").fillna(0).sum())
+    calories = float(pd.to_numeric(df["Total_Calories"], errors="coerce").fillna(0).sum())
+    average_speed_series = pd.to_numeric(df["Avg_Speed"], errors="coerce").dropna()
+    average_speed = 0.0 if average_speed_series.empty else float(average_speed_series.mean())
+    return {
+        "workout_count": int(len(df)),
+        "distance": format_distance(distance),
+        "duration": format_minutes(duration),
+        "calories": format_distance(calories),
+        "average_speed": format_distance(average_speed),
+    }
+
+
+def build_lifetime_stats(df: pd.DataFrame) -> dict[str, object]:
+    """Summarize all-time workout history."""
+    summary = summarize_stats(df)
+    if df.empty:
+        summary.update({"first_workout": "", "latest_workout": "", "best_distance": "0", "longest_duration": "0m"})
+        return summary
+
+    distances = pd.to_numeric(df["Distance"], errors="coerce").fillna(0)
+    durations = pd.to_numeric(df["Workout_Time"], errors="coerce").fillna(0)
+    summary.update(
+        {
+            "first_workout": df["Workout_Date"].min().date().isoformat(),
+            "latest_workout": df["Workout_Date"].max().date().isoformat(),
+            "best_distance": format_distance(float(distances.max())),
+            "longest_duration": format_minutes(int(durations.max())),
+        }
+    )
+    return summary
+
+
+def field_label(field: str) -> str:
+    """Return a readable label for a workout field."""
+    labels = {
+        "Avg_Speed": "Avg Speed",
+        "Workout_Time": "Workout Time",
+        "Total_Calories": "Total Calories",
+        "Heart_Rate": "Heart Rate",
+    }
+    return labels.get(field, field.replace("_", " "))
+
+
+def workout_detail_bucket_granularity(period: str) -> str:
+    """Return the grouping granularity used for Workout Details charts."""
+    if period in {"1_week", "2_weeks", "1_month", "begin_month"}:
+        return "daily"
+    if period == "all":
+        return "monthly"
+    return "weekly"
+
+
+def format_bucket_label(bucket_date: pd.Timestamp, granularity: str) -> str:
+    """Format chart bucket labels."""
+    bucket = pd.to_datetime(bucket_date)
+    if granularity == "monthly":
+        return bucket.strftime("%b %Y")
+    if granularity == "weekly":
+        end = bucket + pd.Timedelta(days=6)
+        return f"{bucket.strftime('%b')} {bucket.day} - {end.strftime('%b')} {end.day}"
+    return f"{bucket.strftime('%b')} {bucket.day}"
+
+
+def add_workout_detail_buckets(df: pd.DataFrame, period: str) -> pd.DataFrame:
+    """Attach daily, Sunday-weekly, or monthly bucket dates to workout rows."""
+    bucketed = df.copy()
+    workout_dates = pd.to_datetime(bucketed["Workout_Date"], errors="coerce").dt.normalize()
+    granularity = workout_detail_bucket_granularity(period)
+    if granularity == "monthly":
+        bucketed["Bucket_Date"] = workout_dates.dt.to_period("M").dt.to_timestamp()
+    elif granularity == "weekly":
+        days_since_sunday = (workout_dates.dt.weekday + 1) % 7
+        bucketed["Bucket_Date"] = workout_dates - pd.to_timedelta(days_since_sunday, unit="D")
+    else:
+        bucketed["Bucket_Date"] = workout_dates
+    return bucketed.dropna(subset=["Bucket_Date"])
+
+
+def build_metric_breakdown(df: pd.DataFrame, metric: str, period: str) -> list[dict[str, object]]:
+    """Build chart rows for one Workout Details metric."""
+    if df.empty or metric not in GRAPHABLE_FIELDS:
+        return []
+
+    metric_df = add_workout_detail_buckets(df, period)
+    metric_df["Metric_Value"] = pd.to_numeric(metric_df[metric], errors="coerce")
+    aggregation = METRIC_AGGREGATIONS.get(metric, "mean")
+    if aggregation == "sum":
+        metric_df["Metric_Value"] = metric_df["Metric_Value"].fillna(0)
+
+    grouped = (
+        metric_df.groupby("Bucket_Date", as_index=False)
+        .agg(value=("Metric_Value", aggregation), workouts=("Metric_Value", "count"))
+        .dropna(subset=["value"])
+        .sort_values(by=["Bucket_Date"])
+    )
+    granularity = workout_detail_bucket_granularity(period)
+    return [
+        {
+            "label": format_bucket_label(row["Bucket_Date"], granularity),
+            "value": float(row["value"]),
+            "workouts": int(row["workouts"]),
+        }
+        for _, row in grouped.iterrows()
+    ]
+
+
+def metric_axis_title(metric: str) -> str:
+    """Return a concise y-axis title for a workout metric chart."""
+    if metric == "Workout_Time":
+        return "Minutes"
+    if metric == "Total_Calories":
+        return "Calories"
+    if metric == "Heart_Rate":
+        return "BPM"
+    return field_label(metric)
+
+
+def build_metric_bar_chart(metric: str, rows: list[dict[str, object]], *, include_plotlyjs: str | bool) -> str | None:
+    """Render one Workout Details metric as a responsive Plotly bar chart."""
+    if not rows:
+        return None
+
+    label = field_label(metric)
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=[row["label"] for row in rows],
+            y=[row["value"] for row in rows],
+            name=label,
+            marker_color="#c8102e",
+            hovertemplate="%{x}<br>%{y:.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=label,
+        xaxis_title="Period",
+        yaxis_title=metric_axis_title(metric),
+        autosize=True,
+        template="plotly_white",
+        margin=dict(l=44, r=18, t=54, b=56),
+        showlegend=False,
+    )
+    return fig.to_html(
+        full_html=False,
+        include_plotlyjs=include_plotlyjs,
+        default_width="100%",
+        default_height="100%",
+        config={"responsive": True, "displaylogo": False, "displayModeBar": False},
+    )
+
+
+def build_workout_detail_charts(df: pd.DataFrame, period: str, selected_graphs: list[str]) -> list[dict[str, object]]:
+    """Build all selected Workout Details charts."""
+    charts = []
+    include_plotlyjs: str | bool = "cdn"
+    for metric in selected_graphs:
+        rows = build_metric_breakdown(df, metric, period)
+        chart_html = build_metric_bar_chart(metric, rows, include_plotlyjs=include_plotlyjs)
+        if chart_html:
+            charts.append({"field": metric, "label": field_label(metric), "html": chart_html})
+            include_plotlyjs = False
+    return charts
+
+
+def build_workout_details_context(historical_data: pd.DataFrame, period: str, selected_graphs: list[str]) -> dict[str, object]:
+    """Build template context for the Workout Details page."""
+    start_date, end_date = workout_detail_period_bounds(period, historical_data)
+    filtered_data = filter_data(historical_data, start_date, end_date)
+    return {
+        "workout_detail_periods": WORKOUT_DETAIL_PERIODS,
+        "selected_period": period,
+        "selected_period_label": WORKOUT_DETAIL_PERIODS[period],
+        "selected_graphs": selected_graphs,
+        "graph_fields": GRAPHABLE_FIELDS,
+        "field_label": field_label,
+        "detail_start_date": start_date,
+        "detail_end_date": end_date,
+        "detail_summary": summarize_stats(filtered_data),
+        "lifetime_stats": build_lifetime_stats(historical_data),
+        "detail_record_count": len(filtered_data),
+        "detail_charts": build_workout_detail_charts(filtered_data, period, selected_graphs),
+    }
 
 
 PUBLIC_PATHS = {
@@ -1721,6 +2018,22 @@ def workout_performance(request: Request):
             "chart_html": chart_html,
             "table_html": table_html,
             "record_count": len(filtered_data),
+            **build_page_context(historical_data),
+        },
+    )
+
+
+def workout_details(request: Request):
+    """Render responsive Workout Details stats charts."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    historical_data = load_history_file(HISTORY_FILE)
+    selected_period = normalize_workout_detail_period(request.query_params.get("period", ""))
+    selected_graphs = parse_graph_selection(request.query_params)
+    return render(
+        request,
+        "workout_details.html",
+        {
+            **build_workout_details_context(historical_data, selected_period, selected_graphs),
             **build_page_context(historical_data),
         },
     )

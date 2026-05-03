@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const baseURL = process.env.BASE_URL ?? "http://127.0.0.1:18080";
 const adminEmail = process.env.UI_TEST_ADMIN_EMAIL ?? "admin@example.com";
@@ -59,6 +62,42 @@ test("docker image serves core authenticated screens", async ({ page, request })
   await expect(page.getByRole("button", { name: "Refresh Dashboard" })).toBeVisible();
   await expect(page.getByText("Records in selected date range:")).toBeVisible();
   await expect(page.getByText("No historical data loaded for the selected date range.")).toBeVisible();
+
+  await page.goto("/workout-details");
+  await expect(page.getByRole("heading", { name: "Workout Details" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh Details" })).toBeVisible();
+
+  const historyDir = mkdtempSync(join(tmpdir(), "schwinn-history-"));
+  const historyCsvPath = join(historyDir, "Workout_History.csv");
+  writeFileSync(
+    historyCsvPath,
+    [
+      "Workout_Date,Distance,Avg_Speed,Workout_Time,Total_Calories,Heart_Rate,RPM,Level",
+      "2026-01-04,3.5,12.2,30,210,128,72,4",
+      "2026-01-11,4.5,13.2,40,260,132,76,5",
+      "2026-02-01,6.5,14.4,50,320,136,80,6",
+      "2026-03-01,8.0,15.0,60,410,142,84,7",
+    ].join("\n"),
+  );
+  await page.goto("/upload-history");
+  await page.getByLabel("Select Historical CSV").setInputFiles(historyCsvPath);
+  await page.getByRole("button", { name: "Import Historical CSV" }).click();
+  await expect(page.getByText("Uploaded Workout_History.csv")).toBeVisible();
+
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 820, height: 1100 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const path of ["/workout-performance", "/workout-details"]) {
+      await page.goto(path);
+      await expect(page.locator(".hero")).toBeVisible();
+      await expect(page.locator(".plotly-graph-div").first()).toBeVisible();
+      const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+      expect(hasPageOverflow).toBe(false);
+    }
+  }
 
   await page.goto("/upload-workout");
   await expect(page.getByRole("heading", { name: "Enter New Workout" })).toBeVisible();

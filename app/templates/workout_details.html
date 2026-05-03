@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workout Details</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+</head>
+<body>
+<div class="page page-wide">
+  {% set page_title = "Workout Details" %}
+  {% set subtitle = "MapMy-style workout stats with responsive metric charts and period controls." %}
+  {% include "_header.html" %}
+
+  <div class="grid">
+    <section class="card">
+      <form method="get" action="{{ url_for('workout_details') }}">
+        <input type="hidden" name="graphs_submitted" value="1">
+        <div class="detail-controls">
+          <div>
+            <label for="period">Time period</label>
+            <select id="period" name="period">
+              {% for value, label in workout_detail_periods.items() %}
+                <option value="{{ value }}" {% if value == selected_period %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <p class="control-note">Week starts Sunday.</p>
+          </div>
+
+          <details class="graph-picker">
+            <summary>Graphs: {{ selected_graphs | length }} selected</summary>
+            <div class="graph-picker-panel">
+              {% for field in graph_fields %}
+                <label class="check graph-picker-option">
+                  <input type="checkbox" name="graphs" value="{{ field }}" {% if field in selected_graphs %}checked{% endif %}>
+                  {{ field_label(field) }}
+                </label>
+              {% endfor %}
+            </div>
+          </details>
+        </div>
+
+        <div class="action-row">
+          <button class="btn" type="submit">Refresh Details</button>
+          <a class="btn btn-secondary" href="{{ url_for('workout_performance') }}">View Dashboard</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="summary-strip" aria-label="Workout detail summary">
+      <article class="summary-card summary-card-compact">
+        <div class="summary-label">Workouts</div>
+        <div class="summary-value">{{ detail_summary.workout_count }}</div>
+      </article>
+      <article class="summary-card summary-card-compact">
+        <div class="summary-label">Distance</div>
+        <div class="summary-value">{{ detail_summary.distance }}</div>
+      </article>
+      <article class="summary-card summary-card-compact">
+        <div class="summary-label">Workout Time</div>
+        <div class="summary-value">{{ detail_summary.duration }}</div>
+      </article>
+      <article class="summary-card summary-card-compact">
+        <div class="summary-label">Calories</div>
+        <div class="summary-value">{{ detail_summary.calories }}</div>
+      </article>
+      <article class="summary-card summary-card-compact">
+        <div class="summary-label">Avg Speed</div>
+        <div class="summary-value">{{ detail_summary.average_speed }}</div>
+      </article>
+    </section>
+
+    <section class="card detail-range-card">
+      <strong>{{ selected_period_label }}</strong>
+      {% if detail_start_date and detail_end_date %}
+        <span class="muted"> {{ detail_start_date }} to {{ detail_end_date }} &middot; {{ detail_record_count }} workouts</span>
+      {% else %}
+        <span class="muted"> No workout history loaded.</span>
+      {% endif %}
+      <div class="path-grid">
+        <div class="meta-block">
+          <div class="meta-label">First Workout</div>
+          <div class="meta-value">{{ lifetime_stats.first_workout or "None" }}</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">Latest Workout</div>
+          <div class="meta-value">{{ lifetime_stats.latest_workout or "None" }}</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">Best Distance</div>
+          <div class="meta-value">{{ lifetime_stats.best_distance }}</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">Longest Workout</div>
+          <div class="meta-value">{{ lifetime_stats.longest_duration }}</div>
+        </div>
+      </div>
+    </section>
+
+    {% if detail_charts %}
+      <section class="metric-chart-grid" aria-label="Workout metric charts">
+        {% for chart in detail_charts %}
+          <article class="card metric-chart-card" data-field="{{ chart.field }}">
+            <div class="metric-chart responsive-plot js-plotly-chart">
+              {{ chart.html | safe }}
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    {% else %}
+      <section class="card">
+        <p class="muted">No data available for the selected period and graphs.</p>
+      </section>
+    {% endif %}
+  </div>
+</div>
+<script src="{{ url_for('static', path='/workout_charts.js') }}"></script>
+</body>
+</html>
