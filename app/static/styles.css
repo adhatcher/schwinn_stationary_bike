@@ -28,6 +28,10 @@ body {
   padding: 28px 18px 40px;
 }
 
+.page-wide {
+  max-width: 1320px;
+}
+
 .page-narrow {
   max-width: 840px;
 }
@@ -294,12 +298,14 @@ h1 {
 .grid {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
+  min-width: 0;
   padding: 16px;
   box-shadow: 0 8px 20px rgba(19, 24, 38, 0.06);
 }
@@ -340,6 +346,10 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 8px 12px;
+}
+
+.field-control-group {
+  margin-top: 14px;
 }
 
 .check {
@@ -500,6 +510,10 @@ table {
   overflow-x: auto;
 }
 
+.table-container table {
+  min-width: 820px;
+}
+
 .table-container-fixed {
   min-height: 288px;
   max-height: 288px;
@@ -594,6 +608,122 @@ th {
   padding: 4px 2px;
   text-transform: none;
   letter-spacing: normal;
+}
+
+.responsive-plot {
+  width: 100%;
+  overflow: hidden;
+}
+
+.responsive-plot > div,
+.responsive-plot .plotly-graph-div {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.responsive-plot .plot-container,
+.responsive-plot .svg-container {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.performance-chart {
+  height: 620px;
+}
+
+.detail-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(220px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.control-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.graph-picker {
+  position: relative;
+  align-self: end;
+}
+
+.graph-picker summary {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: #2e3749;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  list-style: none;
+  padding: 10px;
+}
+
+.graph-picker summary::-webkit-details-marker {
+  display: none;
+}
+
+.graph-picker[open] summary,
+.graph-picker summary:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+  outline: none;
+}
+
+.graph-picker-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(360px, 100%);
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(19, 24, 38, 0.16);
+  padding: 8px;
+}
+
+.graph-picker-option {
+  margin: 0;
+  padding: 7px 4px;
+}
+
+.summary-strip {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.summary-card.summary-card-compact {
+  padding: 14px;
+}
+
+.summary-card-compact .summary-value {
+  font-size: 30px;
+}
+
+.detail-range-card .path-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.metric-chart-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metric-chart-card {
+  min-width: 0;
+}
+
+.metric-chart {
+  height: 380px;
 }
 
 .welcome-title,
@@ -693,6 +823,28 @@ th {
     left: 0;
     right: auto;
   }
+
+  .row,
+  .fields,
+  .detail-controls,
+  .metric-chart-grid,
+  .path-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-picker-panel {
+    position: static;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .action-row .btn {
+    width: 100%;
+  }
+
+  .table-container-fixed {
+    max-height: 360px;
+  }
 }
 
 .summary-section {
@@ -758,4 +910,16 @@ th {
   .logo { height: 52px; }
   h1 { font-size: 36px; }
   .welcome-copy { font-size: 20px; }
+  .performance-chart { height: 360px; }
+  .metric-chart { height: 280px; }
+  .card { padding: 14px; }
+  th, td { padding: 6px 8px; }
+}
+
+@media (min-width: 701px) and (max-width: 1023px) {
+  .performance-chart { height: 500px; }
+  .metric-chart { height: 340px; }
+  .metric-chart-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
 }

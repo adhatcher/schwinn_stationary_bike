@@ -426,6 +426,62 @@ def test_summarize_window_includes_current_day_in_last_30_days() -> None:
     assert summary["workout_time"] == 55
 
 
+def test_workout_detail_period_bounds(monkeypatch) -> None:
+    df = app.load_workout_data(
+        [
+            _sample_workout(1, 10, 2025, 0, 20, distance=1.0),
+            _sample_workout(3, 17, 2026, 0, 30, distance=2.0),
+        ]
+    )
+    monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
+
+    assert app.workout_detail_period_bounds("begin_month", df) == ("2026-03-01", "2026-03-17")
+    assert app.workout_detail_period_bounds("current_year", df) == ("2026-01-01", "2026-03-17")
+    assert app.workout_detail_period_bounds("last_1_year", df) == ("2025-03-18", "2026-03-17")
+    assert app.workout_detail_period_bounds("all", df) == ("2025-01-10", "2026-03-17")
+
+
+def test_workout_detail_weekly_buckets_start_on_sunday() -> None:
+    df = app.load_workout_data(
+        [
+            _sample_workout(3, 14, 2026, 0, 20, distance=1.0),
+            _sample_workout(3, 15, 2026, 0, 20, distance=2.0),
+            _sample_workout(3, 18, 2026, 0, 20, distance=3.0),
+        ]
+    )
+
+    rows = app.build_metric_breakdown(df, "Distance", "3_months")
+
+    assert rows[0]["label"] == "Mar 8 - Mar 14"
+    assert rows[0]["value"] == 1.0
+    assert rows[1]["label"] == "Mar 15 - Mar 21"
+    assert rows[1]["value"] == 5.0
+
+
+def test_workout_detail_metric_aggregation_sums_and_averages() -> None:
+    df = app.load_workout_data(
+        [
+            _sample_workout(3, 15, 2026, 0, 20, distance=2.0),
+            _sample_workout(3, 16, 2026, 0, 40, distance=4.0),
+        ]
+    )
+    df.loc[0, "Avg_Speed"] = 10.0
+    df.loc[1, "Avg_Speed"] = 14.0
+
+    distance_rows = app.build_metric_breakdown(df, "Distance", "3_months")
+    speed_rows = app.build_metric_breakdown(df, "Avg_Speed", "3_months")
+
+    assert distance_rows[0]["value"] == 6.0
+    assert speed_rows[0]["value"] == 12.0
+
+
+def test_parse_graph_selection_defaults_and_filters_invalid_values() -> None:
+    assert app.parse_graph_selection(QueryParams("")) == app.GRAPHABLE_FIELDS
+    assert app.parse_graph_selection(QueryParams("graphs_submitted=1")) == []
+    selected = app.parse_graph_selection(QueryParams("graphs=Distance&graphs=Bad&graphs=RPM"))
+    assert selected == ["Distance", "RPM"]
+
+
 def test_grafana_workouts_api_returns_timeseries_points(monkeypatch, tmp_path) -> None:
     _configure_auth(monkeypatch, tmp_path)
     history_file = tmp_path / "Workout_History.csv"
@@ -777,6 +833,83 @@ def test_workout_performance_table_respects_selected_date_range(monkeypatch, tmp
     assert ">1.0<" not in text
     assert ">3.0<" not in text
     assert "table-container-fixed" in text
+
+
+def test_workout_details_renders_selected_metric_charts(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data(
+        [
+            _sample_workout(3, 10, 2026, 0, 30, distance=2.0),
+            _sample_workout(3, 17, 2026, 0, 40, distance=3.0),
+        ]
+    )
+    df.to_csv(history_file, index=False)
+
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
+
+    client = _client()
+    _log_in(client)
+    response = client.get("/workout-details?period=1_month&graphs=Distance&graphs=RPM")
+
+    assert response.status_code == 200
+    text = response.text
+    assert "Workout Details" in text
+    assert 'name="period"' in text
+    assert 'data-field="Distance"' in text
+    assert 'data-field="RPM"' in text
+    assert 'data-field="Heart_Rate"' not in text
+    assert "workout_charts.js" in text
+
+
+def test_workout_details_defaults_to_all_metric_charts(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data([_sample_workout(3, 17, 2026, 0, 30, distance=2.0)])
+    df.to_csv(history_file, index=False)
+
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+    monkeypatch.setattr(app, "current_day", lambda: pd.Timestamp("2026-03-17"))
+
+    client = _client()
+    _log_in(client)
+    response = client.get("/workout-details?period=1_month")
+
+    assert response.status_code == 200
+    text = response.text
+    for field in app.GRAPHABLE_FIELDS:
+        assert f'data-field="{field}"' in text
+    assert "metric-chart-grid" in text
+    assert "responsive-plot js-plotly-chart" in text
+
+
+def test_workout_details_requires_login(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    _create_admin()
+
+    client = _client()
+    response = client.get("/workout-details", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/login")
+
+
+def test_workout_performance_includes_responsive_chart_assets(monkeypatch, tmp_path) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+    history_file = tmp_path / "Workout_History.csv"
+    df = app.load_workout_data([_sample_workout(3, 17, 2026, 0, 30, distance=2.0)])
+    df.to_csv(history_file, index=False)
+
+    monkeypatch.setattr(app, "HISTORY_FILE", history_file)
+
+    client = _client()
+    _log_in(client)
+    response = client.get("/workout-performance")
+
+    assert response.status_code == 200
+    assert "performance-chart responsive-plot js-plotly-chart" in response.text
+    assert "workout_charts.js" in response.text
 
 
 def test_login_required_redirects_to_login(monkeypatch, tmp_path) -> None:

@@ -18,6 +18,13 @@ router.add_api_route(
     name="workout_performance",
 )
 router.add_api_route(
+    "/workout-details",
+    handlers.workout_details,
+    methods=["GET"],
+    response_class=HTMLResponse,
+    name="workout_details",
+)
+router.add_api_route(
     "/upload-workout",
     handlers.upload_workout_get,
     methods=["GET"],

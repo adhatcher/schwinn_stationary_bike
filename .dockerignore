@@ -1,16 +1,34 @@
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-*.swp
-.venv
-venv
+# Git and local metadata
 .git
 .gitignore
-.pytest_cache
-node_modules
-test-results
-playwright-report
+.DS_Store
+**/.DS_Store
+
+# Python runtime and test artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+.coverage*
+coverage.xml
+
+# Virtual environments and local tools
+.venv/
+venv/
+**/.venv/
+**/venv/
+.tools/
+
+# Node and browser test artifacts
+node_modules/
+test-results/
+playwright-report/
+
+# Local app runtime data
 app/data/*.csv
 app/data/*.db
-app/logs/*.log
+app/logs/
