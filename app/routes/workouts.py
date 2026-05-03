@@ -1,3 +1,5 @@
+"""Workout page and import route registrations."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter

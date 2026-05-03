@@ -22,18 +22,22 @@ DEFAULT_TIMEOUT_SECONDS = 30
 
 
 def _log(message: str) -> None:
+    """Write a status message to stderr."""
     print(message, file=sys.stderr)
 
 
 def _run(command: list[str], check: bool = False) -> subprocess.CompletedProcess[str]:
+    """Run a command and capture its text output."""
     return subprocess.run(command, text=True, capture_output=True, check=check)
 
 
 def _normalize_package_name(name: str) -> str:
+    """Normalize a Python package name for comparisons."""
     return re.sub(r"[-_.]+", "-", (name or "").strip().lower())
 
 
 def _parse_semver(version: str | None) -> tuple[int, int, int] | None:
+    """Parse a semantic version string into numeric parts."""
     if not version:
         return None
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
@@ -43,6 +47,7 @@ def _parse_semver(version: str | None) -> tuple[int, int, int] | None:
 
 
 def _determine_update_type(old_version: str | None, new_version: str | None) -> str:
+    """Classify the version change between two package versions."""
     old_semver = _parse_semver(old_version)
     new_semver = _parse_semver(new_version)
     if not old_semver or not new_semver:
@@ -57,6 +62,7 @@ def _determine_update_type(old_version: str | None, new_version: str | None) -> 
 
 
 def _load_lock_versions(lock_path: Path) -> dict[str, str]:
+    """Load package versions from a uv lock file."""
     if not lock_path.exists():
         return {}
     with lock_path.open("rb") as lock_file:
@@ -71,6 +77,7 @@ def _load_lock_versions(lock_path: Path) -> dict[str, str]:
 
 
 def _choose_alert_vulnerability(alert: dict[str, Any]) -> dict[str, Any]:
+    """Choose the vulnerability payload from a Dependabot alert."""
     vulnerabilities = alert.get("security_vulnerabilities")
     if isinstance(vulnerabilities, list) and vulnerabilities:
         return vulnerabilities[0]
@@ -81,6 +88,7 @@ def _choose_alert_vulnerability(alert: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_alert_fields(alert: dict[str, Any]) -> dict[str, Any]:
+    """Flatten Dependabot alert fields used by remediation."""
     vulnerability = _choose_alert_vulnerability(alert)
     dependency = alert.get("dependency", {}) or {}
     dep_package = dependency.get("package", {}) or {}
@@ -107,6 +115,7 @@ def _extract_alert_fields(alert: dict[str, Any]) -> dict[str, Any]:
 
 
 def _passes_filters(fields: dict[str, Any], min_severity: str) -> bool:
+    """Return whether an alert matches remediation filters."""
     severity = fields.get("severity", "")
     ecosystem = fields.get("ecosystem", "")
     state = fields.get("state", "")
@@ -120,6 +129,7 @@ def _passes_filters(fields: dict[str, Any], min_severity: str) -> bool:
 
 
 def _api_get_json(repo: str, token: str, path: str, params: dict[str, Any] | None = None) -> Any:
+    """Fetch JSON from the GitHub API."""
     payload, _ = _api_get_json_with_headers(repo, token, path, params=params)
     return payload
 
@@ -131,6 +141,7 @@ def _api_get_json_with_headers(
     params: dict[str, Any] | None = None,
     url: str | None = None,
 ) -> tuple[Any, dict[str, str]]:
+    """Fetch JSON and response headers from the GitHub API."""
     request_url = url
     if not request_url:
         encoded_params = urllib.parse.urlencode(params or {})
@@ -161,6 +172,7 @@ def _api_get_json_with_headers(
 
 
 def _extract_next_link_url(link_header: str) -> str | None:
+    """Extract the pagination next URL from a Link header."""
     if not link_header:
         return None
     for raw_part in link_header.split(","):
@@ -176,6 +188,7 @@ def _extract_next_link_url(link_header: str) -> str | None:
 
 
 def _fetch_open_alerts(repo: str, token: str) -> list[dict[str, Any]]:
+    """Fetch all open Dependabot alerts for a repository."""
     alerts: list[dict[str, Any]] = []
     next_url: str | None = None
     while True:
@@ -197,11 +210,13 @@ def _fetch_open_alerts(repo: str, token: str) -> list[dict[str, Any]]:
 
 
 def _safe_branch_component(value: str) -> str:
+    """Sanitize text for use in a branch name component."""
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower()).strip("-")
     return cleaned or "dependency"
 
 
 def _build_fallback_constraint(first_patched_version: str) -> str | None:
+    """Build a major-bounded package constraint from a patched version."""
     semver = _parse_semver(first_patched_version)
     if not semver:
         return None
@@ -210,6 +225,7 @@ def _build_fallback_constraint(first_patched_version: str) -> str | None:
 
 
 def _format_pr_body(fields: dict[str, Any], result: dict[str, Any], old_version: str | None, new_version: str | None) -> str:
+    """Render the pull request body for an automated remediation."""
     lines = [
         "## Automated Security Remediation",
         "",
@@ -235,11 +251,13 @@ def _format_pr_body(fields: dict[str, Any], result: dict[str, Any], old_version:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write an indented JSON payload to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _list_alerts(args: argparse.Namespace) -> int:
+    """List remediation-eligible Dependabot alerts."""
     alerts = _fetch_open_alerts(args.repo, args.token)
     filtered = []
     for alert in alerts:
@@ -265,6 +283,7 @@ def _list_alerts(args: argparse.Namespace) -> int:
 
 
 def _find_alert(repo: str, token: str, alert_id: int) -> dict[str, Any] | None:
+    """Find an open Dependabot alert by id or number."""
     for alert in _fetch_open_alerts(repo, token):
         current_id = alert.get("number") or alert.get("id")
         if int(current_id) == alert_id:
@@ -273,6 +292,7 @@ def _find_alert(repo: str, token: str, alert_id: int) -> dict[str, Any] | None:
 
 
 def _remediate_alert(args: argparse.Namespace) -> int:
+    """Attempt to remediate one Dependabot alert."""
     alert = _find_alert(args.repo, args.token, args.alert_id)
     if not alert:
         payload = {"status": "skipped", "reason": f"Alert {args.alert_id} is not open or not found."}
@@ -381,6 +401,7 @@ def _remediate_alert(args: argparse.Namespace) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser."""
     parser = argparse.ArgumentParser(description="Dependabot security remediation agent")
     parser.add_argument("--repo", required=True, help="Repository in owner/name format.")
     parser.add_argument("--token", required=True, help="GitHub token for API access.")
@@ -407,6 +428,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Run the security remediation command-line interface."""
     parser = _build_parser()
     args = parser.parse_args()
     return int(args.func(args))

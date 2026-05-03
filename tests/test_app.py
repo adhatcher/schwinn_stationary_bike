@@ -1,3 +1,5 @@
+"""Regression tests for the Schwinn FastAPI application."""
+
 from __future__ import annotations
 
 import importlib
@@ -19,15 +21,19 @@ app = importlib.import_module("app.app")
 
 
 class _UploadFile:
+    """Minimal async upload object used by parser tests."""
     def __init__(self, stream: BytesIO, filename: str):
+        """Store upload content and filename for tests."""
         self._stream = stream
         self.filename = filename
 
     async def read(self) -> bytes:
+        """Read the stored upload bytes."""
         return self._stream.read()
 
 
 def _sample_workout(month: int, day: int, year: int, hours: int, minutes: int, distance: float = 5.5) -> dict:
+    """Build a representative workout payload."""
     return {
         "workoutDate": {"Month": month, "Day": day, "Year": year},
         "distance": distance,
@@ -41,6 +47,7 @@ def _sample_workout(month: int, day: int, year: int, hours: int, minutes: int, d
 
 
 def _sample_dat_text() -> str:
+    """Build a representative DAT file payload."""
     header = "\n".join(["header"] * 8)
     body = textwrap.dedent(
         """\
@@ -51,6 +58,7 @@ def _sample_dat_text() -> str:
 
 
 def _configure_auth(monkeypatch, tmp_path) -> None:
+    """Point application storage at a temporary test directory."""
     auth_db = tmp_path / "users.db"
     monkeypatch.setattr(app, "AUTH_DB_FILE", auth_db)
     monkeypatch.setattr(app, "DATA_DIR", tmp_path)
@@ -68,6 +76,7 @@ def _create_user(
     name: str = "Athlete User",
     email_verified: bool = False,
 ):
+    """Create a test user account."""
     return app.create_user(email, password, role=role, name=name, email_verified=email_verified)
 
 
@@ -78,23 +87,28 @@ def test_email_is_valid_handles_none_and_normalizes_whitespace() -> None:
 
 
 def _create_admin(email: str = "admin@example.com", password: str = "password123", *, name: str = "Admin User"):
+    """Create a verified test admin account."""
     return _create_user(email, password, role="admin", name=name, email_verified=True)
 
 
 def _client() -> TestClient:
+    """Create a non-following FastAPI test client."""
     return TestClient(app.app, follow_redirects=False)
 
 
 def _session_signer() -> itsdangerous.TimestampSigner:
+    """Create the signer used by Starlette session cookies."""
     return itsdangerous.TimestampSigner(str(app.secret_key))
 
 
 def _set_session(client: TestClient, session_data: dict[str, object]) -> None:
+    """Install a signed session cookie on the test client."""
     encoded = b64encode(json.dumps(session_data).encode("utf-8"))
     client.cookies.set("session", _session_signer().sign(encoded).decode("utf-8"), domain="testserver.local", path="/")
 
 
 def _get_session(client: TestClient) -> dict[str, object]:
+    """Decode the current test client session cookie."""
     cookie = client.cookies.get("session")
     if not cookie or cookie == "null":
         return {}
@@ -103,29 +117,37 @@ def _get_session(client: TestClient) -> dict[str, object]:
 
 
 def _log_in(client, user=None) -> None:
+    """Attach a logged-in session to the test client."""
     auth_user = user or _create_admin()
     _set_session(client, {app.USER_SESSION_KEY: int(auth_user["id"])})
 
 
 class _DummySMTP:
+    """SMTP test double that records interactions."""
     def __init__(self, *_args, **_kwargs):
+        """Store upload content and filename for tests."""
         self.started_tls = False
         self.logged_in = None
         self.sent_message = None
 
     def __enter__(self):
+        """Return the SMTP double as a context manager."""
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        """Allow context manager exits to propagate exceptions."""
         return False
 
     def starttls(self):
+        """Record that TLS was started."""
         self.started_tls = True
 
     def login(self, username, password):
+        """Record SMTP credentials used for login."""
         self.logged_in = (username, password)
 
     def send_message(self, message):
+        """Record the sent email message."""
         self.sent_message = message
 
 

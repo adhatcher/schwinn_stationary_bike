@@ -1,3 +1,5 @@
+"""FastAPI application factory and lifespan setup."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -9,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    """Initialize application state for the FastAPI lifespan."""
     from app import app as app_module
 
     app_module.init_auth_db()
@@ -16,6 +19,7 @@ async def lifespan(_app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    """Build and configure the Schwinn FastAPI application."""
     from app import app as app_module
     from app.routes import account, admin, auth, grafana, health, workouts
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""FastAPI handlers and shared helpers for the Schwinn workout tracker."""
+
 from __future__ import annotations
 
 import hashlib
@@ -31,6 +33,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 def load_dotenv_file(dotenv_path: Path) -> None:
+    """Load environment variables from a dotenv file without overwriting existing values."""
     if not dotenv_path.exists():
         return
 
@@ -57,6 +60,7 @@ if not secret_key:
 
 
 def env_first(*names: str, default: str = "") -> str:
+    """Return the first non-blank environment value from the provided names."""
     for name in names:
         value = os.getenv(name)
         if value is not None and value.strip():
@@ -69,10 +73,12 @@ STATIC_DIR = BASE_DIR / "static"
 
 
 def template_url_for(request: Request, name: str, **path_params: object) -> str:
+    """Build path-only URLs for templates."""
     return request.url_for(name, **path_params).path
 
 
 def template_url_context(request: Request) -> dict[str, object]:
+    """Expose URL helpers to Jinja templates."""
     return {"url_for": lambda name, **path_params: template_url_for(request, name, **path_params)}
 
 
@@ -121,6 +127,7 @@ VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
 
 
 class PasswordResetTokenError(RuntimeError):
+    """Raised when password reset token operations fail."""
     pass
 
 COLUMN_NAMES = [
@@ -148,6 +155,7 @@ from app.bootstrap.metrics import (
 
 
 def configure_logging() -> None:
+    """Configure application and Uvicorn logging handlers."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     formatter = logging.Formatter(
@@ -180,6 +188,7 @@ def configure_logging() -> None:
 
 
 def audit_auth_event(action: str, email: str, result: str, *, actor_email: str = "", details: str = "") -> None:
+    """Record authentication audit events in metrics and logs."""
     AUTH_EVENT_COUNT.labels(action, result).inc()
     subject_id = email_audit_id(email)
     actor_id = email_audit_id(actor_email)
@@ -196,6 +205,7 @@ def audit_auth_event(action: str, email: str, result: str, *, actor_email: str =
 
 @contextmanager
 def get_db_connection():
+    """Open a SQLite connection with row access."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(AUTH_DB_FILE)
     connection.row_factory = sqlite3.Row
@@ -206,6 +216,7 @@ def get_db_connection():
 
 
 def init_auth_db() -> None:
+    """Create or migrate authentication tables and default settings."""
     with get_db_connection() as connection:
         connection.execute(
             """
@@ -257,12 +268,14 @@ def init_auth_db() -> None:
 
 
 def normalize_email(email: str | None) -> str:
+    """Normalize an email address for storage and lookup."""
     if email is None:
         return ""
     return str(email).strip().lower()
 
 
 def email_is_valid(email: str | None) -> bool:
+    """Validate the email syntax accepted by account forms."""
     normalized = normalize_email(email)
     if not normalized or len(normalized) > 254:
         return False
@@ -288,14 +301,17 @@ def email_is_valid(email: str | None) -> bool:
 
 
 def normalize_name(name: str) -> str:
+    """Collapse whitespace around a display name."""
     return " ".join(name.strip().split())
 
 
 def compose_full_name(first_name: str, last_name: str) -> str:
+    """Build a normalized full name from first and last names."""
     return normalize_name(f"{normalize_name(first_name)} {normalize_name(last_name)}")
 
 
 def display_user_name(user) -> str:
+    """Return the best display name for a user row."""
     if user is None:
         return ""
     first_name = normalize_name(str(user["first_name"])) if "first_name" in user.keys() else ""
@@ -308,6 +324,7 @@ def display_user_name(user) -> str:
 
 
 def user_initials(user) -> str:
+    """Compute initials for user avatar fallbacks."""
     display_name = display_user_name(user)
     words = [word for word in display_name.replace("@", " ").replace(".", " ").split() if word]
     if not words:
@@ -318,10 +335,12 @@ def user_initials(user) -> str:
 
 
 def user_has_avatar(user) -> bool:
+    """Return whether a user row contains avatar data."""
     return bool(user is not None and "avatar_data" in user.keys() and user["avatar_data"])
 
 
 def parse_avatar_size(raw_size: str) -> int:
+    """Clamp a requested avatar size to supported bounds."""
     try:
         requested_size = int(raw_size)
     except (TypeError, ValueError):
@@ -330,6 +349,7 @@ def parse_avatar_size(raw_size: str) -> int:
 
 
 async def process_avatar_upload(upload_file: UploadFile | None, *, requested_size: int = AVATAR_SIZE_DEFAULT_PX) -> bytes:
+    """Validate and resize an uploaded avatar image."""
     if not upload_file or not upload_file.filename:
         raise ValueError("Choose an image file to upload.")
     upload_bytes = await upload_file.read()
@@ -356,6 +376,7 @@ async def process_avatar_upload(upload_file: UploadFile | None, *, requested_siz
 
 
 def mask_email(email: str) -> str:
+    """Redact the local part of an email for display."""
     normalized = normalize_email(email)
     if not normalized or "@" not in normalized:
         return ""
@@ -372,6 +393,7 @@ def mask_email(email: str) -> str:
 
 
 def email_audit_id(value: str) -> str:
+    """Hash an email into a stable audit identifier."""
     normalized = normalize_email(value)
     if not normalized:
         return ""
@@ -386,6 +408,7 @@ def email_audit_id(value: str) -> str:
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:
+    """Load a user row by normalized email address."""
     normalized = normalize_email(email)
     if not normalized:
         return None
@@ -394,6 +417,7 @@ def get_user_by_email(email: str) -> sqlite3.Row | None:
 
 
 def get_user_by_id(user_id: int | None) -> sqlite3.Row | None:
+    """Load a user row by numeric id."""
     if not user_id:
         return None
     with get_db_connection() as connection:
@@ -410,6 +434,7 @@ def create_user(
     last_name: str = "",
     email_verified: bool = False,
 ) -> sqlite3.Row:
+    """Create a user account and return the inserted row."""
     normalized = normalize_email(email)
     normalized_first_name = normalize_name(first_name)
     normalized_last_name = normalize_name(last_name)
@@ -442,6 +467,7 @@ def create_user(
 
 
 def update_user_password(user_id: int, password: str) -> None:
+    """Replace the stored password hash for a user."""
     password_hash = generate_password_hash(password)
     with get_db_connection() as connection:
         connection.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
@@ -449,12 +475,14 @@ def update_user_password(user_id: int, password: str) -> None:
 
 
 def update_user_profile(user_id: int, *, name: str) -> None:
+    """Update a user display name."""
     with get_db_connection() as connection:
         connection.execute("UPDATE users SET name = ? WHERE id = ?", (normalize_name(name), user_id))
         connection.commit()
 
 
 def update_admin_identity(user_id: int, *, first_name: str, last_name: str, email: str, email_verified: bool) -> None:
+    """Update the verified identity fields for an admin user."""
     normalized_first_name = normalize_name(first_name)
     normalized_last_name = normalize_name(last_name)
     full_name = compose_full_name(normalized_first_name, normalized_last_name)
@@ -471,6 +499,7 @@ def update_admin_identity(user_id: int, *, first_name: str, last_name: str, emai
 
 
 def update_user_avatar(user_id: int, avatar_data: bytes, *, avatar_mime: str = AVATAR_MIME_TYPE) -> None:
+    """Store resized avatar bytes for a user."""
     with get_db_connection() as connection:
         connection.execute(
             "UPDATE users SET avatar_data = ?, avatar_mime = ? WHERE id = ?",
@@ -480,6 +509,7 @@ def update_user_avatar(user_id: int, avatar_data: bytes, *, avatar_mime: str = A
 
 
 def update_user_role(user_id: int, role: str) -> None:
+    """Change a user role after validation."""
     if role not in VALID_ROLES:
         raise ValueError(f"Unsupported role: {role}")
     with get_db_connection() as connection:
@@ -488,17 +518,20 @@ def update_user_role(user_id: int, role: str) -> None:
 
 
 def delete_user(user_id: int) -> None:
+    """Delete a user account by id."""
     with get_db_connection() as connection:
         connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
         connection.commit()
 
 
 def list_users() -> list[sqlite3.Row]:
+    """List users sorted by display name or email."""
     with get_db_connection() as connection:
         return connection.execute("SELECT * FROM users ORDER BY COALESCE(NULLIF(name, ''), email) ASC").fetchall()
 
 
 def get_setting(key: str, default: str = "") -> str:
+    """Read an application setting from the database."""
     with get_db_connection() as connection:
         row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     if row is None:
@@ -507,6 +540,7 @@ def get_setting(key: str, default: str = "") -> str:
 
 
 def set_setting(key: str, value: str) -> bool:
+    """Create or update an application setting."""
     try:
         with get_db_connection() as connection:
             connection.execute(
@@ -524,28 +558,34 @@ def set_setting(key: str, value: str) -> bool:
 
 
 def is_registration_enabled() -> bool:
+    """Return whether self-service registration is enabled."""
     return get_setting("registration_enabled", "false").lower() == "true"
 
 
 def set_registration_enabled(enabled: bool) -> bool:
+    """Persist the self-service registration setting."""
     return set_setting("registration_enabled", "true" if enabled else "false")
 
 
 def admin_count() -> int:
+    """Count currently configured admin users."""
     with get_db_connection() as connection:
         row = connection.execute("SELECT COUNT(*) AS count FROM users WHERE role = ?", (ADMIN_ROLE,)).fetchone()
     return int(row["count"]) if row else 0
 
 
 def admin_exists() -> bool:
+    """Return whether at least one admin user exists."""
     return admin_count() > 0
 
 
 def password_reset_serializer() -> URLSafeTimedSerializer:
+    """Create the timed serializer for reset tokens."""
     return URLSafeTimedSerializer(app.secret_key)
 
 
 def generate_password_reset_token(email: str) -> str:
+    """Create a signed password reset token for an email."""
     try:
         return password_reset_serializer().dumps(normalize_email(email), salt=PASSWORD_RESET_SALT)
     except Exception as exc:
@@ -553,6 +593,7 @@ def generate_password_reset_token(email: str) -> str:
 
 
 def verify_password_reset_token(token: str, *, max_age: int | None = None) -> sqlite3.Row | None:
+    """Resolve a password reset token to a user row."""
     try:
         email = password_reset_serializer().loads(
             token,
@@ -565,36 +606,44 @@ def verify_password_reset_token(token: str, *, max_age: int | None = None) -> sq
 
 
 def current_user(request: Request) -> sqlite3.Row | None:
+    """Load the user referenced by the request session."""
     return get_user_by_id(request.session.get(USER_SESSION_KEY))
 
 
 def current_user_is_admin(request: Request) -> bool:
+    """Return whether the request user is an admin."""
     user = current_user(request)
     return bool(user and str(user["role"]) == ADMIN_ROLE)
 
 
 def admin_email_is_verified(user) -> bool:
+    """Return whether an admin account has verified identity fields."""
     return bool(user and str(user["role"]) == ADMIN_ROLE and int(user["email_verified"] or 0) == 1)
 
 
 def login_user(request: Request, user: sqlite3.Row) -> None:
+    """Persist a user id in the request session."""
     request.session.clear()
     request.session[USER_SESSION_KEY] = int(user["id"])
 
 
 def logout_current_user(request: Request) -> None:
+    """Clear the request session."""
     request.session.clear()
 
 
 def password_is_valid(password: str) -> bool:
+    """Return whether a password satisfies local length rules."""
     return len(password) >= 8
 
 
 def generate_temporary_password() -> str:
+    """Generate a temporary password for account setup."""
     return secrets.token_urlsafe(18)
 
 
 def send_password_reset_email(email: str, reset_link: str) -> None:
+    """Send or log a password reset email."""
     message = EmailMessage()
     message["Subject"] = "Reset your Schwinn password"
     message["From"] = MAIL_FROM
@@ -633,6 +682,7 @@ def send_password_reset_email(email: str, reset_link: str) -> None:
 
 
 def build_reset_link(request: Request | str, token: str | None = None) -> str:
+    """Build an absolute or request-based password reset link."""
     if token is None:
         token = str(request)
         if PUBLIC_BASE_URL:
@@ -650,6 +700,7 @@ def render(
     context: dict[str, object] | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
+    """Render a template with shared application context."""
     page_context = dict(context or {})
     page_context.update(
         {
@@ -666,16 +717,19 @@ def render(
 
 
 def redirect_to(url: str, status_code: int = 302) -> RedirectResponse:
+    """Build a redirect response."""
     return RedirectResponse(url=url, status_code=status_code)
 
 
 def route_url(request: Request, name: str, **params: object) -> str:
+    """Build a route path with optional query parameters."""
     path = request.url_for(name).path
     clean_params = {key: value for key, value in params.items() if value is not None}
     return f"{path}?{urlencode(clean_params, safe='@/')}" if clean_params else path
 
 
 def extract_json_objects(payload: str) -> list[dict]:
+    """Extract JSON objects embedded in arbitrary text."""
     decoder = json.JSONDecoder()
     workouts: list[dict] = []
     cursor = 0
@@ -697,6 +751,7 @@ def extract_json_objects(payload: str) -> list[dict]:
 
 
 def parse_dat_payload(raw_text: str) -> list[dict]:
+    """Parse Schwinn DAT text into workout objects."""
     payload = "\n".join(raw_text.splitlines()[8:])
     workouts = extract_json_objects(payload)
     if not workouts:
@@ -705,6 +760,7 @@ def parse_dat_payload(raw_text: str) -> list[dict]:
 
 
 def load_workout_data(workout_json: Iterable[dict]) -> pd.DataFrame:
+    """Convert workout objects into a normalized DataFrame."""
     rows = []
     for workout_dict in workout_json:
         workout_date = (
@@ -735,6 +791,7 @@ def load_workout_data(workout_json: Iterable[dict]) -> pd.DataFrame:
 
 
 def load_history_file(history_file: Path) -> pd.DataFrame:
+    """Load the workout history CSV into a normalized DataFrame."""
     if not history_file.exists() or history_file.stat().st_size == 0:
         return pd.DataFrame(columns=COLUMN_NAMES)
 
@@ -753,6 +810,7 @@ def load_history_file(history_file: Path) -> pd.DataFrame:
 
 
 def merge_data(new_data: pd.DataFrame, historical_data: pd.DataFrame) -> pd.DataFrame:
+    """Merge imported workouts into existing history."""
     if historical_data.empty:
         return new_data.sort_values(by=["Workout_Date"]).reset_index(drop=True)
     if new_data.empty:
@@ -765,22 +823,26 @@ def merge_data(new_data: pd.DataFrame, historical_data: pd.DataFrame) -> pd.Data
 
 
 def save_history(data: pd.DataFrame, history_file: Path) -> None:
+    """Persist workout history to CSV."""
     history_file.parent.mkdir(parents=True, exist_ok=True)
     data.to_csv(history_file, index=False)
 
 
 def read_dat_from_disk(dat_file: Path) -> pd.DataFrame:
+    """Read and parse a DAT file from disk."""
     raw_text = dat_file.read_text(encoding="utf-8", errors="ignore")
     return load_workout_data(parse_dat_payload(raw_text))
 
 
 async def read_dat_from_upload(upload_file: UploadFile) -> pd.DataFrame:
+    """Read and parse an uploaded DAT file."""
     raw_bytes = await upload_file.read()
     raw_text = raw_bytes.decode("utf-8", errors="ignore")
     return load_workout_data(parse_dat_payload(raw_text))
 
 
 async def read_history_csv_from_upload(upload_file: UploadFile) -> pd.DataFrame:
+    """Read and validate an uploaded history CSV."""
     upload_df = pd.read_csv(BytesIO(await upload_file.read()))
     missing_columns = [col for col in COLUMN_NAMES if col not in upload_df.columns]
     if missing_columns:
@@ -797,6 +859,7 @@ async def read_history_csv_from_upload(upload_file: UploadFile) -> pd.DataFrame:
 
 
 def filter_data(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFrame:
+    """Filter workout history by inclusive date bounds."""
     filtered = df.copy()
 
     if start_date:
@@ -808,10 +871,12 @@ def filter_data(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFram
 
 
 def current_day() -> pd.Timestamp:
+    """Return today as a normalized pandas timestamp."""
     return pd.Timestamp.now().normalize()
 
 
 def summarize_window(df: pd.DataFrame, *, days: int, today: pd.Timestamp | None = None) -> dict[str, float | int]:
+    """Summarize workout totals for a rolling day window."""
     if today is None:
         today = current_day()
     else:
@@ -830,6 +895,7 @@ def summarize_window(df: pd.DataFrame, *, days: int, today: pd.Timestamp | None 
 
 
 def format_distance(value: float) -> str:
+    """Format a distance value without redundant decimals."""
     formatted = f"{value:.1f}"
     if "." in formatted:
         formatted = formatted.rstrip("0").rstrip(".")
@@ -837,6 +903,7 @@ def format_distance(value: float) -> str:
 
 
 def format_minutes(total_minutes: int) -> str:
+    """Format total minutes as hours and minutes."""
     hours, minutes = divmod(int(total_minutes), 60)
     if hours and minutes:
         return f"{hours}h {minutes}m"
@@ -846,6 +913,7 @@ def format_minutes(total_minutes: int) -> str:
 
 
 def build_summary_cards(df: pd.DataFrame) -> dict[str, dict[str, str]]:
+    """Build dashboard summary card values from history."""
     today = current_day()
     last_30 = summarize_window(df, days=30, today=today)
     last_year = summarize_window(df, days=365, today=today)
@@ -865,6 +933,7 @@ def build_summary_cards(df: pd.DataFrame) -> dict[str, dict[str, str]]:
 
 
 def build_page_context(historical_data: pd.DataFrame) -> dict[str, object]:
+    """Build shared page context from workout history."""
     min_date = ""
     max_date = ""
     last_workout_date = ""
@@ -891,6 +960,7 @@ def build_page_context(historical_data: pd.DataFrame) -> dict[str, object]:
 
 
 def parse_field_selection(args) -> list[str]:
+    """Parse and validate selected graph fields from query parameters."""
     requested_fields: list[str] = []
 
     for field in args.getlist("field"):
@@ -925,6 +995,7 @@ def parse_field_selection(args) -> list[str]:
 
 
 def build_chart(df: pd.DataFrame, fields: list[str]) -> str | None:
+    """Render the selected workout fields as Plotly HTML."""
     if df.empty or not fields:
         return None
 
@@ -969,6 +1040,7 @@ BOOTSTRAP_ALLOWED_PATHS = {"/healthz", "/metrics", "/setup-admin"}
 
 
 async def auth_and_metrics_middleware(request: Request, call_next):
+    """Enforce authentication and collect request metrics."""
     request.state.request_start = perf_counter()
 
     init_auth_db()
@@ -997,14 +1069,17 @@ async def auth_and_metrics_middleware(request: Request, call_next):
 
 
 def healthz():
+    """Return application health status."""
     return {"status": "ok"}
 
 
 def metrics():
+    """Return Prometheus metrics."""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 def login_get(request: Request):
+    """Render the login form."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     if current_user(request) is not None:
@@ -1021,6 +1096,7 @@ def login_get(request: Request):
 
 
 def login_post(request: Request, email: str = Form(""), password: str = Form("")):
+    """Authenticate login credentials and start a session."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     if current_user(request) is not None:
@@ -1047,6 +1123,7 @@ def login_post(request: Request, email: str = Form(""), password: str = Form("")
 
 
 def register_get(request: Request):
+    """Render the registration form when registration is enabled."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     if current_user(request) is not None:
@@ -1063,6 +1140,7 @@ def register_post(
     password: str = Form(""),
     confirm_password: str = Form(""),
 ):
+    """Validate and create a self-service user account."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     if current_user(request) is not None:
@@ -1093,12 +1171,14 @@ def register_post(
 
 
 def forgot_password_get(request: Request):
+    """Render the forgot password form."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     return render(request, "forgot_password.html", {"message": "", "email": ""})
 
 
 def forgot_password_post(request: Request, email: str = Form("")):
+    """Send a password reset email when the account exists."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     normalized_email = normalize_email(email)
@@ -1122,6 +1202,7 @@ def forgot_password_post(request: Request, email: str = Form("")):
 
 
 def reset_password_get(request: Request, token: str):
+    """Render the password reset form for a valid token."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     user = verify_password_reset_token(token)
@@ -1137,6 +1218,7 @@ def reset_password_post(
     password: str = Form(""),
     confirm_password: str = Form(""),
 ):
+    """Validate and apply a password reset submission."""
     if not admin_exists():
         return redirect_to(route_url(request, "setup_admin"))
     user = verify_password_reset_token(token)
@@ -1166,6 +1248,7 @@ def reset_password_post(
 
 
 def logout(request: Request):
+    """End the current session and redirect to authentication."""
     user = current_user(request)
     logout_current_user(request)
     if user is not None:
@@ -1174,6 +1257,7 @@ def logout(request: Request):
 
 
 def account_avatar(request: Request):
+    """Serve the current user avatar image."""
     user = current_user(request)
     if user is None or not user_has_avatar(user):
         return Response(status_code=404)
@@ -1185,6 +1269,7 @@ def account_avatar(request: Request):
 
 
 def account_context(message: str = "", message_type: str = "", avatar_size: int = AVATAR_SIZE_DEFAULT_PX) -> dict[str, object]:
+    """Build template context for account forms."""
     return {
         "message": message,
         "message_type": message_type,
@@ -1195,6 +1280,7 @@ def account_context(message: str = "", message_type: str = "", avatar_size: int 
 
 
 def account_get(request: Request):
+    """Render the account settings page."""
     return render(
         request,
         "account.html",
@@ -1212,6 +1298,7 @@ async def account_post(
     avatar_size: str = Form(""),
     avatar: UploadFile | None = File(None),
 ):
+    """Apply account profile, password, or avatar updates."""
     user = current_user(request)
     if user is None:
         return redirect_to(route_url(request, "login"))
@@ -1256,6 +1343,7 @@ async def account_post(
 
 
 def setup_admin_context(message: str, email: str, first_name: str, last_name: str, email_verified: bool, existing_admin: bool) -> dict[str, object]:
+    """Build template context for admin setup forms."""
     return {
         "message": message,
         "email": email,
@@ -1276,6 +1364,7 @@ def update_admin_setup(
     email_verified: bool = False,
     submitted: bool = False,
 ):
+    """Validate and update an existing unverified admin identity."""
     message = "Verify or correct the admin email address before continuing."
     current_first_name = normalize_name(str(user["first_name"])) if "first_name" in user.keys() else ""
     current_last_name = normalize_name(str(user["last_name"])) if "last_name" in user.keys() else ""
@@ -1318,6 +1407,7 @@ def update_admin_setup(
 
 
 def setup_admin_get(request: Request):
+    """Render or redirect the admin setup flow."""
     current = current_user(request)
     if admin_exists():
         if current is not None and str(current["role"]) == ADMIN_ROLE and not admin_email_is_verified(current):
@@ -1337,6 +1427,7 @@ def setup_admin_post(
     password: str = Form(""),
     confirm_password: str = Form(""),
 ):
+    """Create or verify the first admin account."""
     current = current_user(request)
     verified = email_verified == "true"
     if admin_exists():
@@ -1390,12 +1481,14 @@ def setup_admin_post(
 
 
 def admin_required(request: Request):
+    """Redirect non-admin users away from admin routes."""
     if not current_user_is_admin(request):
         return redirect_to(route_url(request, "welcome"))
     return None
 
 
 def admin_dashboard(request: Request):
+    """Render admin registration settings."""
     guard = admin_required(request)
     if guard is not None:
         return guard
@@ -1403,6 +1496,7 @@ def admin_dashboard(request: Request):
 
 
 def admin_dashboard_post(request: Request, registration_enabled: str = Form("")):
+    """Update admin registration settings."""
     guard = admin_required(request)
     if guard is not None:
         return guard
@@ -1411,6 +1505,7 @@ def admin_dashboard_post(request: Request, registration_enabled: str = Form(""))
 
 
 def admin_users_get(request: Request):
+    """Render the admin user management page."""
     guard = admin_required(request)
     if guard is not None:
         return guard
@@ -1425,6 +1520,7 @@ def admin_users_post(
     role: str = Form(USER_ROLE),
     user_id: str = Form(""),
 ):
+    """Handle admin user creation, role, deletion, and reset actions."""
     guard = admin_required(request)
     if guard is not None:
         return guard
@@ -1502,6 +1598,7 @@ def admin_users_post(
 
 
 def download_history():
+    """Return workout history as a CSV download."""
     history_df = load_history_file(HISTORY_FILE)
     buffer = StringIO()
     history_df.to_csv(buffer, index=False)
@@ -1513,6 +1610,7 @@ def download_history():
 
 
 def grafana_workouts(request: Request):
+    """Return workout history as Grafana-friendly time series points."""
     start_date = request.query_params.get("from", "") or request.query_params.get("start_date", "")
     end_date = request.query_params.get("to", "") or request.query_params.get("end_date", "")
     try:
@@ -1532,6 +1630,7 @@ def grafana_workouts(request: Request):
 
 
 def grafana_summary(request: Request):
+    """Return aggregate workout summaries for Grafana."""
     start_date = request.query_params.get("from", "") or request.query_params.get("start_date", "")
     end_date = request.query_params.get("to", "") or request.query_params.get("end_date", "")
     try:
@@ -1558,12 +1657,14 @@ def grafana_summary(request: Request):
 
 
 def welcome(request: Request):
+    """Render the welcome dashboard."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     historical_data = load_history_file(HISTORY_FILE)
     return render(request, "welcome.html", build_page_context(historical_data))
 
 
 def workout_performance(request: Request):
+    """Render workout charts and history table."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = request.query_params.get("message", "")
     historical_data = load_history_file(HISTORY_FILE)
@@ -1598,12 +1699,14 @@ def workout_performance(request: Request):
 
 
 def upload_workout_get(request: Request):
+    """Render the DAT workout import form."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     historical_data = load_history_file(HISTORY_FILE)
     return render(request, "upload_workout.html", {"message": "", **build_page_context(historical_data)})
 
 
 async def upload_workout_post(request: Request, dat_file: UploadFile | None = File(None)):
+    """Import workouts from an uploaded or disk DAT file."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = ""
     historical_data = load_history_file(HISTORY_FILE)
@@ -1634,12 +1737,14 @@ async def upload_workout_post(request: Request, dat_file: UploadFile | None = Fi
 
 
 def upload_history_get(request: Request):
+    """Render the historical CSV import form."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     historical_data = load_history_file(HISTORY_FILE)
     return render(request, "upload_history.html", {"message": "", **build_page_context(historical_data)})
 
 
 async def upload_history_post(request: Request, history_csv_file: UploadFile | None = File(None)):
+    """Import workouts from an uploaded history CSV."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     message = ""
     historical_data = load_history_file(HISTORY_FILE)
