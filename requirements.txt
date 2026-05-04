@@ -19,7 +19,7 @@ colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   uvicorn
-fastapi==0.124.4
+fastapi==0.136.1
     # via schwinn-dashboard
 h11==0.16.0
     # via
@@ -71,7 +71,7 @@ pyyaml==6.0.3
     # via uvicorn
 six==1.17.0
     # via python-dateutil
-starlette==0.50.0
+starlette==1.0.0
     # via fastapi
 typing-extensions==4.15.0
     # via
@@ -83,7 +83,7 @@ typing-inspection==0.4.2
     # via pydantic
 tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
     # via pandas
-uvicorn==0.38.0
+uvicorn==0.46.0
     # via schwinn-dashboard
 uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
     # via uvicorn
