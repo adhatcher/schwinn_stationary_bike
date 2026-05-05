@@ -1,0 +1,74 @@
+@startuml
+!include <C4/C4_Component>
+
+title Schwinn Workout Application - C4 Code / Module Diagram
+
+Person(browser, "Browser", "User browser accessing the Schwinn application")
+System_Ext(prometheus, "Prometheus", "Scrapes application metrics")
+System_Ext(strava, "Strava API", "Optional ride upload target")
+
+ContainerDb(csv, "Workout_History.csv", "CSV", "Workout history source file")
+ContainerDb(sqlite, "SQLite database", "SQLite", "Optional or future local database for workout records and user/session data")
+ContainerDb(logs, "logs/", "Rotating log files", "Application log files")
+
+Container_Boundary(appPackage, "app/ package") {
+    Component(init, "__init__.py", "Python module", "Package initialization")
+
+    Component(main, "main.py / app.py", "FastAPI / Python", "FastAPI app factory, router registration, and middleware registration")
+
+    Boundary(core, "core/") {
+        Component(coreConfig, "config.py", "Python module", "Settings and environment variables")
+        Component(coreLogging, "logging.py", "Python module", "Logger and rotation setup")
+        Component(coreMetrics, "metrics.py", "Python module", "Prometheus instrumentation")
+    }
+
+    Boundary(auth, "auth/") {
+        Component(authRoutes, "routes.py", "FastAPI router", "Login and logout endpoints")
+        Component(authService, "service.py", "Python service", "Credential and session logic")
+        Component(authDb, "db.py", "Python data access", "User and session persistence")
+        Component(authModels, "models.py", "Python models", "User and session models")
+    }
+
+    Boundary(workouts, "workouts/") {
+        Component(workoutRoutes, "routes.py", "FastAPI router", "Workout pages and API endpoints")
+        Component(workoutParsing, "parsing.py", "Python module", "CSV parsing and normalization")
+        Component(workoutHistory, "history.py", "Python service", "Filtering, totals, and averages")
+        Component(workoutCharts, "charts.py", "Python module", "Chart generation")
+    }
+
+    Component(templates, "templates/", "Jinja2 templates", "HTML templates")
+    Component(staticFiles, "static/", "Static assets", "CSS, JavaScript, and images")
+}
+
+Rel(browser, main, "Sends HTTP requests", "HTTP/HTTPS")
+
+Rel(main, init, "Imports", "Python import")
+Rel(main, coreConfig, "Loads configuration from", "Python import")
+Rel(main, coreLogging, "Initializes logging", "Python import")
+Rel(main, coreMetrics, "Initializes metrics", "Python import")
+Rel(main, authRoutes, "Registers router", "FastAPI router registration")
+Rel(main, workoutRoutes, "Registers router", "FastAPI router registration")
+Rel(main, templates, "Configures templates", "Jinja2")
+Rel(main, staticFiles, "Mounts static assets", "FastAPI StaticFiles")
+
+Rel(authRoutes, authService, "Delegates authentication logic", "Python function call")
+Rel(authService, authDb, "Reads and writes auth data", "Python function call")
+Rel(authService, authModels, "Uses", "Python import")
+Rel(authDb, sqlite, "Persists user/session data", "SQL / SQLite")
+
+Rel(workoutRoutes, workoutParsing, "Imports workout data through", "Python function call")
+Rel(workoutRoutes, workoutHistory, "Requests workout summaries from", "Python function call")
+Rel(workoutRoutes, workoutCharts, "Requests chart generation from", "Python function call")
+Rel(workoutRoutes, templates, "Renders pages with", "Jinja2")
+
+Rel(workoutParsing, csv, "Reads and normalizes workout data", "File I/O")
+Rel(workoutHistory, csv, "Reads workout history", "File I/O")
+Rel(workoutHistory, sqlite, "Optionally reads and writes workout records", "SQL / SQLite")
+Rel(workoutCharts, workoutHistory, "Uses summarized workout data", "Python function call")
+
+Rel(coreLogging, logs, "Writes logs", "File I/O")
+Rel(coreMetrics, prometheus, "Exposes metrics to", "HTTP / Prometheus exposition format")
+
+Rel(workoutHistory, strava, "Optionally exports rides to", "HTTPS/API")
+
+@enduml

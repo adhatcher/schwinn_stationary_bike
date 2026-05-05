@@ -1,0 +1,695 @@
+{
+  "configuration" : {
+    "scope" : "SoftwareSystem"
+  },
+  "description" : "Architecture model for the Schwinn workout tracking application.",
+  "documentation" : { },
+  "id" : 1,
+  "lastModifiedDate" : "2026-05-03T17:41:44Z",
+  "model" : {
+    "people" : [ {
+      "description" : "Views workout history, charts, ride metrics, and manages ride data.",
+      "id" : "1",
+      "name" : "User",
+      "properties" : {
+        "structurizr.dsl.identifier" : "user"
+      },
+      "relationships" : [ {
+        "description" : "Uses",
+        "destinationId" : "3",
+        "id" : "22",
+        "sourceId" : "1",
+        "tags" : "Relationship",
+        "technology" : "HTTP/HTTPS"
+      }, {
+        "description" : "Uses",
+        "destinationId" : "2",
+        "id" : "23",
+        "linkedRelationshipId" : "22",
+        "sourceId" : "1",
+        "technology" : "HTTP/HTTPS"
+      } ],
+      "tags" : "Element,Person"
+    } ],
+    "softwareSystems" : [ {
+      "containers" : [ {
+        "description" : "Browser-based interface for viewing workouts, charts, and statistics.",
+        "documentation" : { },
+        "id" : "3",
+        "name" : "Web UI",
+        "properties" : {
+          "structurizr.dsl.identifier" : "web"
+        },
+        "relationships" : [ {
+          "description" : "Calls",
+          "destinationId" : "4",
+          "id" : "24",
+          "sourceId" : "3",
+          "tags" : "Relationship",
+          "technology" : "HTTP/JSON"
+        } ],
+        "tags" : "Element,Container",
+        "technology" : "HTML/CSS/JavaScript"
+      }, {
+        "components" : [ {
+          "description" : "Creates the FastAPI app, registers routers, middleware, templates, static files, and metrics.",
+          "documentation" : { },
+          "id" : "5",
+          "name" : "Application Entry Point",
+          "properties" : {
+            "structurizr.dsl.identifier" : "main"
+          },
+          "relationships" : [ {
+            "description" : "Loads settings from",
+            "destinationId" : "6",
+            "id" : "33",
+            "sourceId" : "5",
+            "tags" : "Relationship",
+            "technology" : "Python import"
+          }, {
+            "description" : "Initializes",
+            "destinationId" : "7",
+            "id" : "34",
+            "sourceId" : "5",
+            "tags" : "Relationship",
+            "technology" : "Python import"
+          }, {
+            "description" : "Initializes",
+            "destinationId" : "8",
+            "id" : "35",
+            "sourceId" : "5",
+            "tags" : "Relationship",
+            "technology" : "Python import"
+          }, {
+            "description" : "Registers router",
+            "destinationId" : "9",
+            "id" : "36",
+            "sourceId" : "5",
+            "tags" : "Relationship",
+            "technology" : "FastAPI router registration"
+          }, {
+            "description" : "Registers router",
+            "destinationId" : "13",
+            "id" : "37",
+            "sourceId" : "5",
+            "tags" : "Relationship",
+            "technology" : "FastAPI router registration"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "app/main.py or app/app.py"
+        }, {
+          "description" : "Loads environment variables, file paths, and runtime settings.",
+          "documentation" : { },
+          "id" : "6",
+          "name" : "Configuration",
+          "properties" : {
+            "structurizr.dsl.identifier" : "config"
+          },
+          "tags" : "Element,Component",
+          "technology" : "core/config.py"
+        }, {
+          "description" : "Configures structured application logging and rotating log files.",
+          "documentation" : { },
+          "id" : "7",
+          "name" : "Logging",
+          "properties" : {
+            "structurizr.dsl.identifier" : "logging"
+          },
+          "relationships" : [ {
+            "description" : "Writes",
+            "destinationId" : "18",
+            "id" : "47",
+            "sourceId" : "7",
+            "tags" : "Relationship",
+            "technology" : "File I/O"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "core/logging.py"
+        }, {
+          "description" : "Captures endpoint metrics and exposes Prometheus metrics.",
+          "documentation" : { },
+          "id" : "8",
+          "name" : "Metrics",
+          "properties" : {
+            "structurizr.dsl.identifier" : "metrics"
+          },
+          "relationships" : [ {
+            "description" : "Exposes metrics to",
+            "destinationId" : "19",
+            "id" : "48",
+            "sourceId" : "8",
+            "tags" : "Relationship",
+            "technology" : "HTTP / Prometheus exposition format"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "core/metrics.py"
+        }, {
+          "description" : "Handles login, logout, sessions, and auth-related requests.",
+          "documentation" : { },
+          "id" : "9",
+          "name" : "Auth Routes",
+          "properties" : {
+            "structurizr.dsl.identifier" : "authRoutes"
+          },
+          "relationships" : [ {
+            "description" : "Delegates authentication logic to",
+            "destinationId" : "10",
+            "id" : "38",
+            "sourceId" : "9",
+            "tags" : "Relationship",
+            "technology" : "Python function call"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "auth/routes.py"
+        }, {
+          "description" : "Validates users and manages authentication logic.",
+          "documentation" : { },
+          "id" : "10",
+          "name" : "Auth Service",
+          "properties" : {
+            "structurizr.dsl.identifier" : "authService"
+          },
+          "relationships" : [ {
+            "description" : "Reads/writes auth data through",
+            "destinationId" : "11",
+            "id" : "39",
+            "sourceId" : "10",
+            "tags" : "Relationship",
+            "technology" : "Python function call"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "12",
+            "id" : "40",
+            "sourceId" : "10",
+            "tags" : "Relationship",
+            "technology" : "Python import"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "auth/service.py"
+        }, {
+          "description" : "Reads and writes user/session data.",
+          "documentation" : { },
+          "id" : "11",
+          "name" : "Auth Data Access",
+          "properties" : {
+            "structurizr.dsl.identifier" : "authDb"
+          },
+          "tags" : "Element,Component",
+          "technology" : "auth/db.py"
+        }, {
+          "description" : "Defines auth-related data structures.",
+          "documentation" : { },
+          "id" : "12",
+          "name" : "Auth Models",
+          "properties" : {
+            "structurizr.dsl.identifier" : "authModels"
+          },
+          "tags" : "Element,Component",
+          "technology" : "auth/models.py"
+        }, {
+          "description" : "Provides workout pages and API endpoints.",
+          "documentation" : { },
+          "id" : "13",
+          "name" : "Workout Routes",
+          "properties" : {
+            "structurizr.dsl.identifier" : "workoutRoutes"
+          },
+          "relationships" : [ {
+            "description" : "Requests workout summaries from",
+            "destinationId" : "15",
+            "id" : "41",
+            "sourceId" : "13",
+            "tags" : "Relationship",
+            "technology" : "Python function call"
+          }, {
+            "description" : "Imports workout files through",
+            "destinationId" : "14",
+            "id" : "42",
+            "sourceId" : "13",
+            "tags" : "Relationship",
+            "technology" : "Python function call"
+          }, {
+            "description" : "Requests chart generation from",
+            "destinationId" : "16",
+            "id" : "43",
+            "sourceId" : "13",
+            "tags" : "Relationship",
+            "technology" : "Python function call"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "workouts/routes.py"
+        }, {
+          "description" : "Parses Schwinn workout history CSV data.",
+          "documentation" : { },
+          "id" : "14",
+          "name" : "Workout Parser",
+          "properties" : {
+            "structurizr.dsl.identifier" : "workoutParser"
+          },
+          "relationships" : [ {
+            "description" : "Reads imported workout data from",
+            "destinationId" : "17",
+            "id" : "44",
+            "sourceId" : "14",
+            "tags" : "Relationship",
+            "technology" : "File I/O / SQL"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "workouts/parsing.py"
+        }, {
+          "description" : "Loads, filters, aggregates, and summarizes workout history.",
+          "documentation" : { },
+          "id" : "15",
+          "name" : "Workout History Service",
+          "properties" : {
+            "structurizr.dsl.identifier" : "workoutHistory"
+          },
+          "relationships" : [ {
+            "description" : "Reads/writes workout records",
+            "destinationId" : "17",
+            "id" : "45",
+            "sourceId" : "15",
+            "tags" : "Relationship",
+            "technology" : "File I/O / SQL"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "workouts/history.py"
+        }, {
+          "description" : "Builds charts and visual summaries from workout metrics.",
+          "documentation" : { },
+          "id" : "16",
+          "name" : "Chart Generator",
+          "properties" : {
+            "structurizr.dsl.identifier" : "chartGenerator"
+          },
+          "relationships" : [ {
+            "description" : "Uses aggregated workout data",
+            "destinationId" : "15",
+            "id" : "46",
+            "sourceId" : "16",
+            "tags" : "Relationship",
+            "technology" : "Python function call"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "workouts/charts.py"
+        } ],
+        "description" : "Serves pages and APIs, parses workout data, calculates metrics, generates charts, and exposes metrics.",
+        "documentation" : { },
+        "id" : "4",
+        "name" : "Python Web Application",
+        "properties" : {
+          "structurizr.dsl.identifier" : "api"
+        },
+        "relationships" : [ {
+          "description" : "Reads and writes workout history",
+          "destinationId" : "17",
+          "id" : "25",
+          "sourceId" : "4",
+          "tags" : "Relationship",
+          "technology" : "File I/O / SQL"
+        }, {
+          "description" : "Writes logs",
+          "destinationId" : "18",
+          "id" : "26",
+          "sourceId" : "4",
+          "tags" : "Relationship",
+          "technology" : "File I/O"
+        }, {
+          "description" : "Uploads rides",
+          "destinationId" : "20",
+          "id" : "29",
+          "sourceId" : "4",
+          "tags" : "Relationship",
+          "technology" : "HTTPS/API"
+        }, {
+          "description" : "Potential future integration",
+          "destinationId" : "21",
+          "id" : "31",
+          "sourceId" : "4",
+          "tags" : "Relationship",
+          "technology" : "HTTPS/API"
+        }, {
+          "description" : "Exposes metrics to",
+          "destinationId" : "19",
+          "id" : "49",
+          "linkedRelationshipId" : "48",
+          "sourceId" : "4",
+          "technology" : "HTTP / Prometheus exposition format"
+        } ],
+        "tags" : "Element,Container",
+        "technology" : "FastAPI / Python"
+      }, {
+        "description" : "Stores imported workout history and calculated ride metadata.",
+        "documentation" : { },
+        "id" : "17",
+        "name" : "Workout Data Store",
+        "properties" : {
+          "structurizr.dsl.identifier" : "data"
+        },
+        "tags" : "Element,Container",
+        "technology" : "CSV / SQLite"
+      }, {
+        "description" : "Stores rotating application logs for troubleshooting and auditability.",
+        "documentation" : { },
+        "id" : "18",
+        "name" : "Application Logs",
+        "properties" : {
+          "structurizr.dsl.identifier" : "logs"
+        },
+        "tags" : "Element,Container",
+        "technology" : "Log files"
+      } ],
+      "description" : "Tracks Schwinn workout history, ride statistics, charts, and optional ride exports.",
+      "documentation" : { },
+      "id" : "2",
+      "name" : "Schwinn Workout Application",
+      "properties" : {
+        "structurizr.dsl.identifier" : "schwinn",
+        "structurizr.inspection.model.softwaresystem.documentation" : "info",
+        "structurizr.inspection.model.softwaresystem.decisions" : "info"
+      },
+      "relationships" : [ {
+        "description" : "Uploads rides",
+        "destinationId" : "20",
+        "id" : "30",
+        "linkedRelationshipId" : "29",
+        "sourceId" : "2",
+        "technology" : "HTTPS/API"
+      }, {
+        "description" : "Potential future integration",
+        "destinationId" : "21",
+        "id" : "32",
+        "linkedRelationshipId" : "31",
+        "sourceId" : "2",
+        "technology" : "HTTPS/API"
+      }, {
+        "description" : "Exposes metrics to",
+        "destinationId" : "19",
+        "id" : "50",
+        "linkedRelationshipId" : "48",
+        "sourceId" : "2",
+        "technology" : "HTTP / Prometheus exposition format"
+      } ],
+      "tags" : "Element,Software System"
+    }, {
+      "description" : "Scrapes application metrics.",
+      "documentation" : { },
+      "id" : "19",
+      "name" : "Prometheus",
+      "properties" : {
+        "structurizr.dsl.identifier" : "prometheus"
+      },
+      "relationships" : [ {
+        "description" : "Scrapes /metrics",
+        "destinationId" : "4",
+        "id" : "27",
+        "sourceId" : "19",
+        "tags" : "Relationship",
+        "technology" : "HTTP"
+      }, {
+        "description" : "Scrapes /metrics",
+        "destinationId" : "2",
+        "id" : "28",
+        "linkedRelationshipId" : "27",
+        "sourceId" : "19",
+        "technology" : "HTTP"
+      } ],
+      "tags" : "Element,Software System"
+    }, {
+      "description" : "Optional external ride upload destination.",
+      "documentation" : { },
+      "id" : "20",
+      "name" : "Strava API",
+      "properties" : {
+        "structurizr.dsl.identifier" : "strava"
+      },
+      "tags" : "Element,Software System"
+    }, {
+      "description" : "Potential future external ride upload destination.",
+      "documentation" : { },
+      "id" : "21",
+      "name" : "MapMyRide",
+      "properties" : {
+        "structurizr.dsl.identifier" : "mapmyride"
+      },
+      "tags" : "Element,Software System"
+    } ]
+  },
+  "name" : "Schwinn Workout Application",
+  "properties" : {
+    "structurizr.inspection.error" : "0",
+    "structurizr.inspection.model.softwaresystem.documentation" : "info",
+    "structurizr.dsl" : "d29ya3NwYWNlICJTY2h3aW5uIFdvcmtvdXQgQXBwbGljYXRpb24iICJBcmNoaXRlY3R1cmUgbW9kZWwgZm9yIHRoZSBTY2h3aW5uIHdvcmtvdXQgdHJhY2tpbmcgYXBwbGljYXRpb24uIiB7CgogICAgcHJvcGVydGllcyB7CiAgICAgICAgc3RydWN0dXJpenIuaW5zcGVjdGlvbi5tb2RlbC5zb2Z0d2FyZXN5c3RlbS5kb2N1bWVudGF0aW9uIGluZm8KICAgICAgICBzdHJ1Y3R1cml6ci5pbnNwZWN0aW9uLm1vZGVsLnNvZnR3YXJlc3lzdGVtLmRlY2lzaW9ucyBpbmZvCiAgICB9CgogICAgbW9kZWwgewogICAgICAgIHVzZXIgPSBwZXJzb24gIlVzZXIiICJWaWV3cyB3b3Jrb3V0IGhpc3RvcnksIGNoYXJ0cywgcmlkZSBtZXRyaWNzLCBhbmQgbWFuYWdlcyByaWRlIGRhdGEuIgoKICAgICAgICBzY2h3aW5uID0gc29mdHdhcmVTeXN0ZW0gIlNjaHdpbm4gV29ya291dCBBcHBsaWNhdGlvbiIgIlRyYWNrcyBTY2h3aW5uIHdvcmtvdXQgaGlzdG9yeSwgcmlkZSBzdGF0aXN0aWNzLCBjaGFydHMsIGFuZCBvcHRpb25hbCByaWRlIGV4cG9ydHMuIiB7CiAgICAgICAgICAgIHByb3BlcnRpZXMgewogICAgICAgICAgICAgICAgc3RydWN0dXJpenIuaW5zcGVjdGlvbi5tb2RlbC5zb2Z0d2FyZXN5c3RlbS5kb2N1bWVudGF0aW9uIGluZm8KICAgICAgICAgICAgICAgIHN0cnVjdHVyaXpyLmluc3BlY3Rpb24ubW9kZWwuc29mdHdhcmVzeXN0ZW0uZGVjaXNpb25zIGluZm8KICAgICAgICAgICAgfQoKICAgICAgICAgICAgd2ViID0gY29udGFpbmVyICJXZWIgVUkiICJCcm93c2VyLWJhc2VkIGludGVyZmFjZSBmb3Igdmlld2luZyB3b3Jrb3V0cywgY2hhcnRzLCBhbmQgc3RhdGlzdGljcy4iICJIVE1ML0NTUy9KYXZhU2NyaXB0IgoKICAgICAgICAgICAgYXBpID0gY29udGFpbmVyICJQeXRob24gV2ViIEFwcGxpY2F0aW9uIiAiU2VydmVzIHBhZ2VzIGFuZCBBUElzLCBwYXJzZXMgd29ya291dCBkYXRhLCBjYWxjdWxhdGVzIG1ldHJpY3MsIGdlbmVyYXRlcyBjaGFydHMsIGFuZCBleHBvc2VzIG1ldHJpY3MuIiAiRmFzdEFQSSAvIFB5dGhvbiIgewogICAgICAgICAgICAgICAgbWFpbiA9IGNvbXBvbmVudCAiQXBwbGljYXRpb24gRW50cnkgUG9pbnQiICJDcmVhdGVzIHRoZSBGYXN0QVBJIGFwcCwgcmVnaXN0ZXJzIHJvdXRlcnMsIG1pZGRsZXdhcmUsIHRlbXBsYXRlcywgc3RhdGljIGZpbGVzLCBhbmQgbWV0cmljcy4iICJhcHAvbWFpbi5weSBvciBhcHAvYXBwLnB5IgoKICAgICAgICAgICAgICAgIGNvbmZpZyA9IGNvbXBvbmVudCAiQ29uZmlndXJhdGlvbiIgIkxvYWRzIGVudmlyb25tZW50IHZhcmlhYmxlcywgZmlsZSBwYXRocywgYW5kIHJ1bnRpbWUgc2V0dGluZ3MuIiAiY29yZS9jb25maWcucHkiCiAgICAgICAgICAgICAgICBsb2dnaW5nID0gY29tcG9uZW50ICJMb2dnaW5nIiAiQ29uZmlndXJlcyBzdHJ1Y3R1cmVkIGFwcGxpY2F0aW9uIGxvZ2dpbmcgYW5kIHJvdGF0aW5nIGxvZyBmaWxlcy4iICJjb3JlL2xvZ2dpbmcucHkiCiAgICAgICAgICAgICAgICBtZXRyaWNzID0gY29tcG9uZW50ICJNZXRyaWNzIiAiQ2FwdHVyZXMgZW5kcG9pbnQgbWV0cmljcyBhbmQgZXhwb3NlcyBQcm9tZXRoZXVzIG1ldHJpY3MuIiAiY29yZS9tZXRyaWNzLnB5IgoKICAgICAgICAgICAgICAgIGF1dGhSb3V0ZXMgPSBjb21wb25lbnQgIkF1dGggUm91dGVzIiAiSGFuZGxlcyBsb2dpbiwgbG9nb3V0LCBzZXNzaW9ucywgYW5kIGF1dGgtcmVsYXRlZCByZXF1ZXN0cy4iICJhdXRoL3JvdXRlcy5weSIKICAgICAgICAgICAgICAgIGF1dGhTZXJ2aWNlID0gY29tcG9uZW50ICJBdXRoIFNlcnZpY2UiICJWYWxpZGF0ZXMgdXNlcnMgYW5kIG1hbmFnZXMgYXV0aGVudGljYXRpb24gbG9naWMuIiAiYXV0aC9zZXJ2aWNlLnB5IgogICAgICAgICAgICAgICAgYXV0aERiID0gY29tcG9uZW50ICJBdXRoIERhdGEgQWNjZXNzIiAiUmVhZHMgYW5kIHdyaXRlcyB1c2VyL3Nlc3Npb24gZGF0YS4iICJhdXRoL2RiLnB5IgogICAgICAgICAgICAgICAgYXV0aE1vZGVscyA9IGNvbXBvbmVudCAiQXV0aCBNb2RlbHMiICJEZWZpbmVzIGF1dGgtcmVsYXRlZCBkYXRhIHN0cnVjdHVyZXMuIiAiYXV0aC9tb2RlbHMucHkiCgogICAgICAgICAgICAgICAgd29ya291dFJvdXRlcyA9IGNvbXBvbmVudCAiV29ya291dCBSb3V0ZXMiICJQcm92aWRlcyB3b3Jrb3V0IHBhZ2VzIGFuZCBBUEkgZW5kcG9pbnRzLiIgIndvcmtvdXRzL3JvdXRlcy5weSIKICAgICAgICAgICAgICAgIHdvcmtvdXRQYXJzZXIgPSBjb21wb25lbnQgIldvcmtvdXQgUGFyc2VyIiAiUGFyc2VzIFNjaHdpbm4gd29ya291dCBoaXN0b3J5IENTViBkYXRhLiIgIndvcmtvdXRzL3BhcnNpbmcucHkiCiAgICAgICAgICAgICAgICB3b3Jrb3V0SGlzdG9yeSA9IGNvbXBvbmVudCAiV29ya291dCBIaXN0b3J5IFNlcnZpY2UiICJMb2FkcywgZmlsdGVycywgYWdncmVnYXRlcywgYW5kIHN1bW1hcml6ZXMgd29ya291dCBoaXN0b3J5LiIgIndvcmtvdXRzL2hpc3RvcnkucHkiCiAgICAgICAgICAgICAgICBjaGFydEdlbmVyYXRvciA9IGNvbXBvbmVudCAiQ2hhcnQgR2VuZXJhdG9yIiAiQnVpbGRzIGNoYXJ0cyBhbmQgdmlzdWFsIHN1bW1hcmllcyBmcm9tIHdvcmtvdXQgbWV0cmljcy4iICJ3b3Jrb3V0cy9jaGFydHMucHkiCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGRhdGEgPSBjb250YWluZXIgIldvcmtvdXQgRGF0YSBTdG9yZSIgIlN0b3JlcyBpbXBvcnRlZCB3b3Jrb3V0IGhpc3RvcnkgYW5kIGNhbGN1bGF0ZWQgcmlkZSBtZXRhZGF0YS4iICJDU1YgLyBTUUxpdGUiCiAgICAgICAgICAgIGxvZ3MgPSBjb250YWluZXIgIkFwcGxpY2F0aW9uIExvZ3MiICJTdG9yZXMgcm90YXRpbmcgYXBwbGljYXRpb24gbG9ncyBmb3IgdHJvdWJsZXNob290aW5nIGFuZCBhdWRpdGFiaWxpdHkuIiAiTG9nIGZpbGVzIgogICAgICAgIH0KCiAgICAgICAgcHJvbWV0aGV1cyA9IHNvZnR3YXJlU3lzdGVtICJQcm9tZXRoZXVzIiAiU2NyYXBlcyBhcHBsaWNhdGlvbiBtZXRyaWNzLiIKICAgICAgICBzdHJhdmEgPSBzb2Z0d2FyZVN5c3RlbSAiU3RyYXZhIEFQSSIgIk9wdGlvbmFsIGV4dGVybmFsIHJpZGUgdXBsb2FkIGRlc3RpbmF0aW9uLiIKICAgICAgICBtYXBteXJpZGUgPSBzb2Z0d2FyZVN5c3RlbSAiTWFwTXlSaWRlIiAiUG90ZW50aWFsIGZ1dHVyZSBleHRlcm5hbCByaWRlIHVwbG9hZCBkZXN0aW5hdGlvbi4iCgogICAgICAgIHVzZXIgLT4gd2ViICJVc2VzIiAiSFRUUC9IVFRQUyIKICAgICAgICB3ZWIgLT4gYXBpICJDYWxscyIgIkhUVFAvSlNPTiIKCiAgICAgICAgYXBpIC0+IGRhdGEgIlJlYWRzIGFuZCB3cml0ZXMgd29ya291dCBoaXN0b3J5IiAiRmlsZSBJL08gLyBTUUwiCiAgICAgICAgYXBpIC0+IGxvZ3MgIldyaXRlcyBsb2dzIiAiRmlsZSBJL08iCiAgICAgICAgcHJvbWV0aGV1cyAtPiBhcGkgIlNjcmFwZXMgL21ldHJpY3MiICJIVFRQIgogICAgICAgIGFwaSAtPiBzdHJhdmEgIlVwbG9hZHMgcmlkZXMiICJIVFRQUy9BUEkiCiAgICAgICAgYXBpIC0+IG1hcG15cmlkZSAiUG90ZW50aWFsIGZ1dHVyZSBpbnRlZ3JhdGlvbiIgIkhUVFBTL0FQSSIKCiAgICAgICAgbWFpbiAtPiBjb25maWcgIkxvYWRzIHNldHRpbmdzIGZyb20iICJQeXRob24gaW1wb3J0IgogICAgICAgIG1haW4gLT4gbG9nZ2luZyAiSW5pdGlhbGl6ZXMiICJQeXRob24gaW1wb3J0IgogICAgICAgIG1haW4gLT4gbWV0cmljcyAiSW5pdGlhbGl6ZXMiICJQeXRob24gaW1wb3J0IgogICAgICAgIG1haW4gLT4gYXV0aFJvdXRlcyAiUmVnaXN0ZXJzIHJvdXRlciIgIkZhc3RBUEkgcm91dGVyIHJlZ2lzdHJhdGlvbiIKICAgICAgICBtYWluIC0+IHdvcmtvdXRSb3V0ZXMgIlJlZ2lzdGVycyByb3V0ZXIiICJGYXN0QVBJIHJvdXRlciByZWdpc3RyYXRpb24iCgogICAgICAgIGF1dGhSb3V0ZXMgLT4gYXV0aFNlcnZpY2UgIkRlbGVnYXRlcyBhdXRoZW50aWNhdGlvbiBsb2dpYyB0byIgIlB5dGhvbiBmdW5jdGlvbiBjYWxsIgogICAgICAgIGF1dGhTZXJ2aWNlIC0+IGF1dGhEYiAiUmVhZHMvd3JpdGVzIGF1dGggZGF0YSB0aHJvdWdoIiAiUHl0aG9uIGZ1bmN0aW9uIGNhbGwiCiAgICAgICAgYXV0aFNlcnZpY2UgLT4gYXV0aE1vZGVscyAiVXNlcyIgIlB5dGhvbiBpbXBvcnQiCgogICAgICAgIHdvcmtvdXRSb3V0ZXMgLT4gd29ya291dEhpc3RvcnkgIlJlcXVlc3RzIHdvcmtvdXQgc3VtbWFyaWVzIGZyb20iICJQeXRob24gZnVuY3Rpb24gY2FsbCIKICAgICAgICB3b3Jrb3V0Um91dGVzIC0+IHdvcmtvdXRQYXJzZXIgIkltcG9ydHMgd29ya291dCBmaWxlcyB0aHJvdWdoIiAiUHl0aG9uIGZ1bmN0aW9uIGNhbGwiCiAgICAgICAgd29ya291dFJvdXRlcyAtPiBjaGFydEdlbmVyYXRvciAiUmVxdWVzdHMgY2hhcnQgZ2VuZXJhdGlvbiBmcm9tIiAiUHl0aG9uIGZ1bmN0aW9uIGNhbGwiCgogICAgICAgIHdvcmtvdXRQYXJzZXIgLT4gZGF0YSAiUmVhZHMgaW1wb3J0ZWQgd29ya291dCBkYXRhIGZyb20iICJGaWxlIEkvTyAvIFNRTCIKICAgICAgICB3b3Jrb3V0SGlzdG9yeSAtPiBkYXRhICJSZWFkcy93cml0ZXMgd29ya291dCByZWNvcmRzIiAiRmlsZSBJL08gLyBTUUwiCiAgICAgICAgY2hhcnRHZW5lcmF0b3IgLT4gd29ya291dEhpc3RvcnkgIlVzZXMgYWdncmVnYXRlZCB3b3Jrb3V0IGRhdGEiICJQeXRob24gZnVuY3Rpb24gY2FsbCIKCiAgICAgICAgbG9nZ2luZyAtPiBsb2dzICJXcml0ZXMiICJGaWxlIEkvTyIKICAgICAgICBtZXRyaWNzIC0+IHByb21ldGhldXMgIkV4cG9zZXMgbWV0cmljcyB0byIgIkhUVFAgLyBQcm9tZXRoZXVzIGV4cG9zaXRpb24gZm9ybWF0IgogICAgfQoKICAgIHZpZXdzIHsKICAgICAgICBzeXN0ZW1Db250ZXh0IHNjaHdpbm4gImMxLXN5c3RlbS1jb250ZXh0IiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICBhdXRvbGF5b3V0IGxyCiAgICAgICAgfQoKICAgICAgICBjb250YWluZXIgc2Nod2lubiAiYzItY29udGFpbmVyIiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICBhdXRvbGF5b3V0IGxyCiAgICAgICAgfQoKICAgICAgICBjb21wb25lbnQgYXBpICJjMy1jb21wb25lbnQiIHsKICAgICAgICAgICAgaW5jbHVkZSAqCiAgICAgICAgICAgIGF1dG9sYXlvdXQgdGIKICAgICAgICB9CgogICAgICAgIHN0eWxlcyB7CiAgICAgICAgICAgIGVsZW1lbnQgIlBlcnNvbiIgewogICAgICAgICAgICAgICAgc2hhcGUgcGVyc29uCiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICMwODQyN2IKICAgICAgICAgICAgICAgIGNvbG9yICNmZmZmZmYKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAiU29mdHdhcmUgU3lzdGVtIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICMxMTY4YmQKICAgICAgICAgICAgICAgIGNvbG9yICNmZmZmZmYKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAiQ29udGFpbmVyIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICM0MzhkZDUKICAgICAgICAgICAgICAgIGNvbG9yICNmZmZmZmYKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAiQ29tcG9uZW50IiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICM4NWJiZjAKICAgICAgICAgICAgICAgIGNvbG9yICMwMDAwMDAKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAiRGF0YWJhc2UiIHsKICAgICAgICAgICAgICAgIHNoYXBlIGN5bGluZGVyCiAgICAgICAgICAgIH0KICAgICAgICB9CgogICAgICAgIHRoZW1lIGRlZmF1bHQKICAgIH0KCiAgICBjb25maWd1cmF0aW9uIHsKICAgICAgICBzY29wZSBzb2Z0d2FyZXN5c3RlbQogICAgfQp9",
+    "structurizr.inspection.model.softwaresystem.decisions" : "info",
+    "structurizr.inspection.info" : "2",
+    "structurizr.inspection.ignore" : "0",
+    "structurizr.inspection.warning" : "0"
+  },
+  "views" : {
+    "componentViews" : [ {
+      "automaticLayout" : {
+        "edgeSeparation" : 50,
+        "nodeSeparation" : 50,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 100,
+        "vertices" : true
+      },
+      "containerId" : "4",
+      "elements" : [ {
+        "id" : "5",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "6",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "7",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "8",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "9",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "10",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "11",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "12",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "13",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "14",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "15",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "16",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "17",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "18",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "19",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "c3-component",
+      "name" : "Component View: Schwinn Workout Application - Python Web Application",
+      "order" : 3,
+      "relationships" : [ {
+        "id" : "33"
+      }, {
+        "id" : "34"
+      }, {
+        "id" : "35"
+      }, {
+        "id" : "36"
+      }, {
+        "id" : "37"
+      }, {
+        "id" : "38"
+      }, {
+        "id" : "39"
+      }, {
+        "id" : "40"
+      }, {
+        "id" : "41"
+      }, {
+        "id" : "42"
+      }, {
+        "id" : "43"
+      }, {
+        "id" : "44"
+      }, {
+        "id" : "45"
+      }, {
+        "id" : "46"
+      }, {
+        "id" : "47"
+      }, {
+        "id" : "48"
+      } ]
+    } ],
+    "configuration" : {
+      "styles" : {
+        "elements" : [ {
+          "background" : "#85bbf0",
+          "color" : "#000000",
+          "tag" : "Component"
+        }, {
+          "background" : "#438dd5",
+          "color" : "#ffffff",
+          "tag" : "Container"
+        }, {
+          "shape" : "Cylinder",
+          "tag" : "Database"
+        }, {
+          "background" : "#08427b",
+          "color" : "#ffffff",
+          "shape" : "Person",
+          "tag" : "Person"
+        }, {
+          "background" : "#1168bd",
+          "color" : "#ffffff",
+          "tag" : "Software System"
+        } ]
+      },
+      "terminology" : { },
+      "themes" : [ "https://static.structurizr.com/themes/default/theme.json" ]
+    },
+    "containerViews" : [ {
+      "automaticLayout" : {
+        "edgeSeparation" : 50,
+        "nodeSeparation" : 50,
+        "rankDirection" : "LeftRight",
+        "rankSeparation" : 100,
+        "vertices" : true
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "3",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "4",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "17",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "18",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "19",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "20",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "21",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "externalSoftwareSystemBoundariesVisible" : false,
+      "key" : "c2-container",
+      "name" : "Container View: Schwinn Workout Application",
+      "order" : 2,
+      "relationships" : [ {
+        "id" : "22"
+      }, {
+        "id" : "24"
+      }, {
+        "id" : "25"
+      }, {
+        "id" : "26"
+      }, {
+        "id" : "27"
+      }, {
+        "id" : "29"
+      }, {
+        "id" : "31"
+      }, {
+        "id" : "49"
+      } ],
+      "softwareSystemId" : "2"
+    } ],
+    "systemContextViews" : [ {
+      "automaticLayout" : {
+        "edgeSeparation" : 50,
+        "nodeSeparation" : 50,
+        "rankDirection" : "LeftRight",
+        "rankSeparation" : 100,
+        "vertices" : true
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "2",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "19",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "20",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "21",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "enterpriseBoundaryVisible" : true,
+      "key" : "c1-system-context",
+      "name" : "System Context View: Schwinn Workout Application",
+      "order" : 1,
+      "relationships" : [ {
+        "id" : "23"
+      }, {
+        "id" : "28"
+      }, {
+        "id" : "30"
+      }, {
+        "id" : "32"
+      }, {
+        "id" : "50"
+      } ],
+      "softwareSystemId" : "2"
+    } ]
+  }
+}

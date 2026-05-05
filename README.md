@@ -101,7 +101,7 @@ export AUTH_DB_FILE=/custom/path/users.db
 When the app is behind a reverse proxy like SWAG, set the public HTTPS URL so password reset emails contain the correct external link:
 
 ```bash
-export PUBLIC_BASE_URL="https://schwinn.aaronhatcher.com"
+export PUBLIC_BASE_URL="https://<yoursite>.<yourdomain.com>"
 ```
 
 ## Password reset email
@@ -131,7 +131,7 @@ export SMTP_SECURE="tls"
 export MAIL_FROM_ADDRESS="no-reply@example.com"
 ```
 
-For this repo, the easiest path is to keep those values in your local `.env` and commit only [.env.example](/Users/aaron/Documents/Development/app_code/PythonCode/schwinn/.env.example).
+For this repo, the easiest path is to keep those values in your local `.env` and commit only [.env.example](/Users/<user>/Documents/Development/schwinn/.env.example).
 
 Optional reset settings:
 
@@ -191,10 +191,41 @@ PORT=9090 DATA_DIR=/app/custom-data docker compose up --build
 
 ## UI workflow
 
-1. Upload `<user>.DAT` (or place file at `/app/data/AARON.DAT`).
+1. Upload `<user>.DAT` (or place file at `/app/data/<user>.DAT`).
 2. Choose start/end date.
 3. Select fields to include.
 4. Use table header dropdown filters (date filter supports checkbox multi-select).
 5. Click **Refresh Dashboard**.
 
 Historical data is persisted in `/app/data/Workout_History.csv`.
+
+## Architecture
+
+Architecture diagrams are generated from the diagram sources under `docs/architecture/` and published as dark-theme images under `docs/images/`.  Can be created using
+
+```bash
+docker run -it --rm \
+  -p 8080:8080 \
+  -v "$PWD/docs/architecture/structurizr:/usr/local/structurizr" \
+  structurizr/structurizr local
+  ```
+
+Then Open `http://localhost:8080`
+
+### C1 System Context diagram
+
+![C1 System Context diagram](docs/images/c1-system-context-dark.svg)
+
+![C1 System Context diagram](docs/images/c1-system-context-dark-key.svg)
+
+### C2 Container diagram
+
+![C2 Container diagram](docs/images/c2-container-dark.svg)
+
+![C2 Container diagram key](docs/images/c2-container-dark-key.svg)
+
+### C3 Component diagram
+
+![C3 Component diagram](docs/images/c3-component-dark.svg)
+
+![C3 Component diagram key](docs/images/c3-component-dark-key.svg)

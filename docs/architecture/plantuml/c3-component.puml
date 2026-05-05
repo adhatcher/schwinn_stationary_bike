@@ -1,0 +1,63 @@
+@startuml
+!include <C4/C4_Component>
+
+title Schwinn Workout Application - C3 Component Diagram
+
+Person(user, "User", "Views workouts, charts, and ride statistics")
+
+ContainerDb(workoutData, "Workout History Data", "CSV / SQLite", "Workout_Date, Distance, Avg_Speed, Workout_Time, Calories, Heart_Rate, RPM, Level")
+ContainerDb(appLogs, "Application Logs", "Rotating log files", "Runtime logs")
+System_Ext(prometheus, "Prometheus", "Scrapes application metrics")
+System_Ext(strava, "Strava API", "Optional ride upload target")
+
+Container_Boundary(api, "Schwinn Python Web Application") {
+    Component(main, "Application Entry Point", "app/main.py or app/app.py", "Creates FastAPI app, registers routers, middleware, templates, static files, and metrics")
+
+    Component(config, "Configuration", "core/config.py", "Loads environment variables and app settings")
+    Component(logging, "Logging", "core/logging.py", "Configures structured and rotating application logs")
+    Component(metrics, "Metrics", "core/metrics.py", "Captures endpoint metrics and exposes Prometheus metrics")
+
+    Component(authRoutes, "Auth Routes", "auth/routes.py", "Handles login, logout, sessions, and auth-related requests")
+    Component(authService, "Auth Service", "auth/service.py", "Validates users and manages authentication logic")
+    Component(authDb, "Auth Data Access", "auth/db.py", "Reads and writes user/session data")
+    Component(authModels, "Auth Models", "auth/models.py", "Defines auth-related data structures")
+
+    Component(workoutRoutes, "Workout Routes", "workouts/routes.py", "Provides workout pages and API endpoints")
+    Component(workoutParser, "Workout Parser", "workouts/parsing.py", "Parses imported Schwinn workout history CSV data")
+    Component(workoutHistory, "Workout History Service", "workouts/history.py", "Loads, filters, aggregates, and summarizes workout history")
+    Component(chartGenerator, "Chart Generator", "workouts/charts.py", "Builds charts and visual summaries from workout metrics")
+
+    Component(templates, "Templates", "Jinja2 Templates", "Renders server-side HTML pages")
+    Component(staticFiles, "Static Assets", "CSS/JS/images", "Provides browser assets")
+}
+
+Rel(user, workoutRoutes, "Views workouts and charts", "HTTP")
+Rel(user, authRoutes, "Authenticates", "HTTP")
+
+Rel(main, config, "Loads settings from")
+Rel(main, logging, "Initializes")
+Rel(main, metrics, "Initializes")
+Rel(main, authRoutes, "Registers router")
+Rel(main, workoutRoutes, "Registers router")
+Rel(main, templates, "Configures")
+Rel(main, staticFiles, "Mounts")
+
+Rel(authRoutes, authService, "Delegates auth logic to")
+Rel(authService, authDb, "Reads/writes auth data through")
+Rel(authService, authModels, "Uses")
+
+Rel(workoutRoutes, workoutHistory, "Requests workout summaries from")
+Rel(workoutRoutes, workoutParser, "Imports workout files through")
+Rel(workoutRoutes, chartGenerator, "Requests chart generation from")
+Rel(workoutRoutes, templates, "Renders pages with")
+Rel(workoutRoutes, staticFiles, "References")
+
+Rel(workoutParser, workoutData, "Reads imported CSV data from")
+Rel(workoutHistory, workoutData, "Reads/writes workout data")
+Rel(chartGenerator, workoutHistory, "Uses aggregated workout data")
+
+Rel(logging, appLogs, "Writes")
+Rel(metrics, prometheus, "Exposes /metrics to", "HTTP")
+Rel(workoutHistory, strava, "Optionally exports rides to", "HTTPS/API")
+
+@enduml
