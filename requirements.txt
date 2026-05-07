@@ -57,9 +57,9 @@ plotly==6.7.0
     # via schwinn-dashboard
 prometheus-client==0.25.0
     # via schwinn-dashboard
-pydantic==2.13.3
+pydantic==2.13.4
     # via fastapi
-pydantic-core==2.46.3
+pydantic-core==2.46.4
     # via pydantic
 python-dateutil==2.9.0.post0
     # via pandas
