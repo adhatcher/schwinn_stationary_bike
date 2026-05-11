@@ -31,7 +31,7 @@ httptools==0.7.1
     # via uvicorn
 httpx==0.28.1
     # via schwinn-dashboard
-idna==3.13
+idna==3.14
     # via
     #   anyio
     #   httpx
@@ -43,7 +43,7 @@ markupsafe==3.0.3
     # via
     #   jinja2
     #   werkzeug
-narwhals==2.20.0
+narwhals==2.21.0
     # via plotly
 numpy==2.4.4
     # via pandas
@@ -57,15 +57,15 @@ plotly==6.7.0
     # via schwinn-dashboard
 prometheus-client==0.25.0
     # via schwinn-dashboard
-pydantic==2.13.3
+pydantic==2.13.4
     # via fastapi
-pydantic-core==2.46.3
+pydantic-core==2.46.4
     # via pydantic
 python-dateutil==2.9.0.post0
     # via pandas
 python-dotenv==1.2.2
     # via uvicorn
-python-multipart==0.0.27
+python-multipart==0.0.28
     # via schwinn-dashboard
 pyyaml==6.0.3
     # via uvicorn
