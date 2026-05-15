@@ -83,7 +83,7 @@ typing-inspection==0.4.2
     # via pydantic
 tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
     # via pandas
-uvicorn==0.46.0
+uvicorn==0.47.0
     # via schwinn-dashboard
 uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
     # via uvicorn
