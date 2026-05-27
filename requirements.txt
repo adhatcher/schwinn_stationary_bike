@@ -59,7 +59,7 @@ prometheus-client==0.25.0
     # via schwinn-dashboard
 pydantic==2.13.4
     # via fastapi
-pydantic-core==2.47.0
+pydantic-core==2.46.4
     # via pydantic
 python-dateutil==2.9.0.post0
     # via pandas
@@ -80,7 +80,9 @@ typing-extensions==4.15.0
     #   pydantic-core
     #   typing-inspection
 typing-inspection==0.4.2
-    # via pydantic
+    # via
+    #   fastapi
+    #   pydantic
 tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
     # via pandas
 uvicorn==0.48.0
