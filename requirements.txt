@@ -19,7 +19,7 @@ colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   uvicorn
-fastapi==0.137.1
+fastapi==0.137.2
     # via schwinn-dashboard
 h11==0.16.0
     # via
@@ -59,7 +59,7 @@ prometheus-client==0.25.0
     # via schwinn-dashboard
 pydantic==2.13.4
     # via fastapi
-pydantic-core==2.46.4
+pydantic-core==2.47.0
     # via pydantic
 python-dateutil==2.9.0.post0
     # via pandas
