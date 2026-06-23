@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   ci:
-    uses: adhatcher-org/shared-workflows/.github/workflows/app-ci.yml@e6520622447b5a743aab60bba5dc25c95a32cc69 # v1.0.0
+    uses: adhatcher-org/shared-workflows/.github/workflows/app-ci.yml@8189d4131e5b4b78d9b6f947e4a3bc8a28d4fdc8 # v1.0.1
     with:
       python-version: "3.14"
       dependency-manager: uv

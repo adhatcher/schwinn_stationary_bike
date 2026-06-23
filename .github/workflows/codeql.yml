@@ -18,6 +18,6 @@ permissions:
 
 jobs:
   analyze:
-    uses: adhatcher-org/shared-workflows/.github/workflows/codeql.yml@e6520622447b5a743aab60bba5dc25c95a32cc69 # v1.0.0
+    uses: adhatcher-org/shared-workflows/.github/workflows/codeql.yml@8189d4131e5b4b78d9b6f947e4a3bc8a28d4fdc8 # v1.0.1
     with:
       languages: '["python"]'
