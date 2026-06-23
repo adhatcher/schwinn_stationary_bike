@@ -1,108 +1,28 @@
-name: Build and Deploy
+name: Docker Publish
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
-  build-only:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5.0.0
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4.0.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.0.0
-
-      - name: Build Docker image without publishing
-        uses: docker/build-push-action@v7.0.0
-        with:
-          context: .
-          push: false
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  build-and-push:
-    if: >
-      github.event_name == 'push' ||
-      (
-        github.event_name == 'workflow_dispatch' &&
-        github.ref == 'refs/heads/master'
-      )
-    runs-on: ubuntu-latest
+  publish:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == github.event.repository.default_branch) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref_name == github.event.repository.default_branch)
     permissions:
       contents: write
       packages: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
-
-      - name: Get latest build number and increment
-        id: tag
-        run: |
-          CURRENT_DATE=${{ steps.date.outputs.date }}
-          LATEST_TAG=$(git ls-remote --tags "https://github.com/${{ github.repository }}.git" | \
-            grep -oP "$CURRENT_DATE-\K\d+" | \
-            sort -n | \
-            tail -1)
-
-          if [ -z "$LATEST_TAG" ]; then
-            BUILD_NUMBER=1
-          else
-            BUILD_NUMBER=$((LATEST_TAG + 1))
-          fi
-
-          NEW_TAG="$CURRENT_DATE-$BUILD_NUMBER"
-          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "New tag will be: $NEW_TAG"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4.0.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.0.0
-
-      - name: Login to Container Registry
-        uses: docker/login-action@v4.1.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7.0.0
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.new_tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          labels: |
-            org.opencontainers.image.created=${{ steps.date.outputs.date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+    concurrency:
+      group: docker-publish
+      cancel-in-progress: false
+    uses: adhatcher-org/shared-workflows/.github/workflows/docker-publish.yml@e6520622447b5a743aab60bba5dc25c95a32cc69 # v1.0.0
+    with:
+      package-name: schwinn_stationary_bike
+      checkout-ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
