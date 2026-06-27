@@ -4,7 +4,7 @@ annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
-anyio==4.14.0
+anyio==4.14.1
     # via
     #   httpx
     #   starlette
@@ -13,13 +13,13 @@ certifi==2026.6.17
     # via
     #   httpcore
     #   httpx
-click==8.4.1
+click==8.4.2
     # via uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   uvicorn
-fastapi==0.138.0
+fastapi==0.138.1
     # via schwinn-dashboard
 h11==0.16.0
     # via
@@ -59,7 +59,7 @@ prometheus-client==0.25.0
     # via schwinn-dashboard
 pydantic==2.13.4
     # via fastapi
-pydantic-core==2.46.4
+pydantic-core==2.47.0
     # via pydantic
 python-dateutil==2.9.0.post0
     # via pandas
