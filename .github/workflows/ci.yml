@@ -1,36 +1,26 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - master
   pull_request:
     branches:
       - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  test-and-security:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5.0.0
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.11.7"
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Run tests
-        run: make test
-
-      - name: Run coverage
-        run: make coverage
-
-      - name: Run security checks
-        run: make security
+  ci:
+    uses: adhatcher-org/shared-workflows/.github/workflows/app-ci.yml@8189d4131e5b4b78d9b6f947e4a3bc8a28d4fdc8 # v1.0.1
+    with:
+      python-version: "3.14"
+      dependency-manager: uv
+      run-lint: false
+      run-typecheck: false
+      run-tests: true
+      run-coverage: true
+      run-security: true
+      run-docker-build: true
