@@ -59,8 +59,6 @@ prometheus-client==0.25.0
     # via schwinn-dashboard
 pydantic==2.13.4
     # via fastapi
-pydantic-core==2.46.4
-    # via pydantic
 python-dateutil==2.9.0.post0
     # via pandas
 python-dotenv==1.2.2
@@ -95,3 +93,4 @@ websockets==16.0
     # via uvicorn
 werkzeug==3.1.8
     # via schwinn-dashboard
+
