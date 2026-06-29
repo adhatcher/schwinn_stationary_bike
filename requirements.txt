@@ -49,7 +49,7 @@ numpy==2.5.0
     # via pandas
 packaging==26.2
     # via plotly
-pandas==3.0.3
+pandas==3.0.4
     # via schwinn-dashboard
 pillow==12.2.0
     # via schwinn-dashboard
